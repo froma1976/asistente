@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Filtro Personal de Llamadas IA — Gemini 3.8 Live</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Header -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-icon">🛡️</div>
+        <div>
+          <h1>Filtro Personal de Llamadas</h1>
+          <p class="subtitle">Secretario de Voz en Tiempo Real • <span class="badge-model">Gemini 3.8 Live</span></p>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <div id="apiStatusBadge" class="status-pill warn">⚙️ Falta API Key Gemini</div>
+        <button id="openSettingsBtn" class="btn btn-secondary">⚙️ Configurar Mi Móvil y Reglas</button>
+      </div>
+    </header>
+
+    <!-- Main Bar for Simulating or Testing Calls -->
+    <section class="test-bar">
+      <div class="test-bar-label">
+        <strong>🧪 Probar ahora mismo:</strong>
+        <span>Simula una llamada entrante o usa tu micrófono real con Gemini 3.8 Live</span>
+      </div>
+      <div class="test-bar-buttons">
+        <button id="simB2bBtn" class="btn btn-chip">💼 Simular: Propuesta B2B Interesante</button>
+        <button id="simSpamBtn" class="btn btn-chip">🚫 Simular: Spam Telemarketing Luz</button>
+        <button id="startWebMicBtn" class="btn btn-primary-outline">🎙️ Llamada Real con mi Micrófono (Gemini Live)</button>
+      </div>
+    </section>
+
+    <!-- Main Grid -->
+    <main class="dashboard-grid">
+      <!-- Left Column: Live Call Radar + Big Takeover Action -->
+      <section class="left-col">
+        <!-- Active Call Status Card -->
+        <div id="callStateBanner" class="call-banner idle">
+          <div class="pulse-dot"></div>
+          <div class="banner-text">
+            <strong id="callBannerTitle">Esperando llamadas entrantes...</strong>
+            <span id="callBannerSub">Tu asistente contestará automáticamente y verás todo aquí en vivo.</span>
+          </div>
+          <div id="callOriginBadge" class="origin-tag">—</div>
+        </div>
+
+        <!-- AI Real-time Classification Card -->
+        <div class="card Radar-card">
+          <div class="card-header">
+            <h2>🕵️‍♂️ Ficha Detectada en Tiempo Real</h2>
+            <span id="scoreBadge" class="score-badge neutral">Interés: —/10</span>
+          </div>
+
+          <div class="meter-wrap">
+            <div id="relevanceBar" class="meter-fill" style="width: 50%"></div>
+          </div>
+
+          <div class="info-grid">
+            <div class="info-item">
+              <label>¿Quién llama?</label>
+              <div id="callerNameVal" class="info-value">Sin llamada activa</div>
+            </div>
+            <div class="info-item">
+              <label>Empresa / Entidad</label>
+              <div id="companyVal" class="info-value">—</div>
+            </div>
+            <div class="info-item">
+              <label>Teléfono Origen</label>
+              <div id="fromNumberVal" class="info-value">—</div>
+            </div>
+            <div class="info-item">
+              <label>Categoría</label>
+              <div id="categoryVal" class="info-value badge-cat">—</div>
+            </div>
+          </div>
+
+          <div class="summary-box">
+            <label>📋 Resumen de lo que quieren:</label>
+            <p id="summaryVal">Cuando entre una llamada, tu asistente preguntará quién es y qué necesita, mostrando aquí el resumen al instante.</p>
+          </div>
+
+          <div id="recommendationBox" class="recommendation-box">
+            <span>💡 Recomendación IA:</span>
+            <strong id="recommendationVal">En espera</strong>
+          </div>
+        </div>
+
+        <!-- BIG DECISION PANEL: TAKE OVER OR REJECT -->
+        <div class="card decision-card">
+          <h2>⚡ Tu Decisión en Caliente</h2>
+          <p class="decision-hint">Si ves en la transcripción que la llamada te interesa, pulsa el botón verde para que el asistente te la pase al instante:</p>
+
+          <button id="transferMobileBtn" class="btn btn-takeover" disabled>
+            <span class="takeover-icon">📲</span>
+            <div class="takeover-text">
+              <strong>¡ME INTERESA! DESVIAR A MI MÓVIL</strong>
+              <small id="targetMobileLabel">Pasar llamada en caliente a +34600000000</small>
+            </div>
+          </button>
+
+          <div class="secondary-decisions">
+            <button id="takeoverWebBtn" class="btn btn-secondary" disabled>
+              🎙️ Atender desde este PC
+            </button>
+            <button id="hangupBtn" class="btn btn-danger" disabled>
+              📵 Rechazar y Colgar
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Live Transcript & Whisper Bar -->
+      <section class="right-col">
+        <div class="card transcript-card">
+          <div class="card-header">
+            <div>
+              <h2>💬 Transcripción en Vivo</h2>
+              <p class="card-sub">Todo lo que dice el comercial y lo que responde tu asistente palabra por palabra</p>
+            </div>
+            <span id="liveIndicator" class="live-pill hidden">● EN DIRECTO</span>
+          </div>
+
+          <div id="transcriptContainer" class="transcript-feed">
+            <div class="empty-transcript">
+              <div class="empty-icon">🎧</div>
+              <h3>Ninguna conversación en curso</h3>
+              <p>Haz clic arriba en <strong>"💼 Simular: Propuesta B2B Interesante"</strong> o en <strong>"🎙️ Llamada Real con mi Micrófono"</strong> para ver cómo tu asistente filtra la llamada en directo.</p>
+            </div>
+          </div>
+
+          <!-- Whisper / Quick Orders to Assistant -->
+          <div class="whisper-panel">
+            <label class="whisper-title">🤫 Susurrar orden al asistente (sin hablar tú):</label>
+            <div class="whisper-chips">
+              <button class="chip-btn" data-whisper="Pregúntale cuál es el presupuesto o precio exacto y condiciones.">💰 Preguntar precios</button>
+              <button class="chip-btn" data-whisper="Pídele que me envíe toda la propuesta detallada por correo electrónico y despídete amablemente.">📧 Pedir por email</button>
+              <button class="chip-btn" data-whisper="Dile que ahora mismo estoy en una reunión importante, que si puede dejar un teléfono directo para devolverle la llamada.">⏳ Pedir teléfono directo</button>
+              <button class="chip-btn" data-whisper="Dile educadamente que no nos interesa esta oferta comercial y despídete.">🚫 No me interesa</button>
+            </div>
+
+            <form id="whisperForm" class="whisper-form">
+              <input
+                type="text"
+                id="whisperInput"
+                placeholder="Escribe qué quieres que le diga o pregunte tu asistente ahora mismo..."
+                autocomplete="off"
+              />
+              <button type="submit" id="whisperSendBtn" class="btn btn-primary" disabled>Enviar orden</button>
+            </form>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>⚙️ Configuración de tu Asistente y Desvío</h2>
+        <button id="closeSettingsBtn" class="close-btn">✕</button>
+      </div>
+
+      <form id="settingsForm" class="settings-form">
+        <div class="form-section">
+          <h3>1. Motor de Voz IA (Gemini 3.8 Live)</h3>
+          <label>
+            Gemini API Key
+            <input type="password" id="cfgGeminiKey" placeholder="AIzaSy..." />
+            <small>Necesaria para llamadas de voz en vivo con micrófono o teléfono.</small>
+          </label>
+          <label>
+            Voz del Asistente
+            <select id="cfgVoiceName">
+              <option value="Aoede">Aoede (Femenina, natural y ejecutiva)</option>
+              <option value="Puck">Puck (Masculina, dinámica)</option>
+              <option value="Kore">Kore (Femenina, serena)</option>
+              <option value="Charon">Charon (Masculina, formal)</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="form-section">
+          <h3>2. Tus Datos y Número de Desvío</h3>
+          <div class="form-row">
+            <label>
+              Tu Nombre (Cómo te llama el asistente)
+              <input type="text" id="cfgOwnerName" placeholder="Ej. Carlos" required />
+            </label>
+            <label>
+              📱 Tu Móvil Personal (Adonde se desvía si te interesa)
+              <input type="text" id="cfgPersonalPhone" placeholder="+34600000000" required />
+            </label>
+          </div>
+          <label>
+            Tu Email para recibir propuestas comerciales
+            <input type="email" id="cfgOwnerEmail" placeholder="contacto@tudominio.com" />
+          </label>
+          <label>
+            Tus Reglas de Filtrado (¿Qué descartar y qué te interesa?)
+            <textarea id="cfgFilterRules" rows="3"></textarea>
+          </label>
+        </div>
+
+        <div class="form-section">
+          <h3>3. Telefonía Real con Twilio (Opcional)</h3>
+          <p class="webhook-note">
+            Apunta el webhook de voz de tu número Twilio a: <code>https://tu-dominio/twilio/voice</code>
+          </p>
+          <div class="form-row">
+            <label>
+              Twilio Account SID
+              <input type="text" id="cfgTwilioSid" placeholder="ACxxxxxxxxxxxxxxxx" />
+            </label>
+            <label>
+              Twilio Auth Token
+              <input type="password" id="cfgTwilioToken" placeholder="••••••••••••••••" />
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="cancelSettingsBtn" class="btn btn-secondary">Cancelar</button>
+          <button type="submit" class="btn btn-primary">💾 Guardar Configuración</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
