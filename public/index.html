@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Filtro Personal de Llamadas IA — Gemini 3.8 Live</title>
+  <title>Secretaria Personal IA 360º — Gemini 3.8 Live</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -11,33 +11,70 @@
     <!-- Top Header -->
     <header class="topbar">
       <div class="brand">
-        <div class="brand-icon">🛡️</div>
+        <div class="brand-icon">👩‍💼</div>
         <div>
-          <h1>Filtro Personal de Llamadas</h1>
-          <p class="subtitle">Secretario de Voz en Tiempo Real • <span class="badge-model">Gemini 3.8 Live</span></p>
+          <h1>Secretaria Personal IA de <span id="ownerHeaderName">Fernando</span></h1>
+          <p class="subtitle">Recados, Agenda, Disponibilidad de Reservas, Memoria CRM, Telegram y Facturas • <span class="badge-model">Gemini 3.8 Live (es-ES)</span></p>
         </div>
       </div>
 
       <div class="topbar-actions">
-        <div id="apiStatusBadge" class="status-pill warn">⚙️ Falta API Key Gemini</div>
-        <button id="openSettingsBtn" class="btn btn-secondary">⚙️ Configurar Mi Móvil y Reglas</button>
+        <div id="apiStatusBadge" class="status-pill warn">⚙️ Conectando...</div>
+        <button id="testTelegramTopBtn" class="btn btn-chip" title="Enviar mensaje de prueba a tu bot de Telegram @fraypericobot">✈️ Probar Alerta Telegram</button>
+        <button id="openSettingsBtn" class="btn btn-secondary">⚙️ Configurar Todo</button>
       </div>
     </header>
+
+    <!-- SaaS KPI & Business Profile Selector Bar -->
+    <section class="kpi-bar">
+      <div class="kpi-metrics">
+        <div class="kpi-box">
+          <span class="kpi-label">🚫 Spam / Ofertas Frenadas</span>
+          <strong id="statSpamBlocked" class="kpi-val">4</strong>
+        </div>
+        <div class="kpi-box">
+          <span class="kpi-label">⏱️ Tiempo Ahorrado</span>
+          <strong id="statTimeSaved" class="kpi-val">18 min</strong>
+        </div>
+        <div class="kpi-box">
+          <span class="kpi-label">🏡 Reservas y Citas</span>
+          <strong id="statCapturedCount" class="kpi-val">0</strong>
+        </div>
+        <div class="kpi-box highlight">
+          <span class="kpi-label">💰 Valor Captado Estimado</span>
+          <strong id="statEstimatedValue" class="kpi-val">480 €</strong>
+        </div>
+      </div>
+
+      <div class="template-selector-box">
+        <label for="businessTemplateSelect">🏢 Modo / Plantilla de Negocio (SaaS):</label>
+        <select id="businessTemplateSelect">
+          <option value="full_360">🌟 Secretaria 360º (Personal + Casa Rural + Facturas)</option>
+          <option value="rural_hotel">🏡 Alojamiento Rural / Casa Rural / Hotel</option>
+          <option value="autonomo_oficios">🔧 Autónomo / Oficios / Logística / Empresa</option>
+          <option value="clinica_despacho">🩺 Clínica / Despacho / Asesoría Profesional</option>
+          <option value="personal_shield">🛡️ Escudo Personal + Negociador de Facturas</option>
+        </select>
+      </div>
+    </section>
 
     <!-- Main Bar for Simulating or Testing Calls -->
     <section class="test-bar">
       <div class="test-bar-label">
-        <strong>🧪 Probar ahora mismo:</strong>
-        <span>Simula una llamada entrante o usa tu micrófono real con Gemini 3.8 Live</span>
+        <strong>🧪 Probar tu Secretaria en Vivo (Voz Español de España):</strong>
+        <span>Simula llamadas con memoria CRM, disponibilidad real, citas, recados o facturas, o usa tu micrófono</span>
       </div>
       <div class="test-bar-buttons">
-        <button id="simB2bBtn" class="btn btn-chip">💼 Simular: Propuesta B2B Interesante</button>
-        <button id="simSpamBtn" class="btn btn-chip">🚫 Simular: Spam Telemarketing Luz</button>
-        <button id="startWebMicBtn" class="btn btn-primary-outline">🎙️ Llamada Real con mi Micrófono (Gemini Live)</button>
+        <button class="btn btn-chip sim-scenario-btn" data-scenario="reservation_request">🏡 Simular: Reserva + Disponibilidad</button>
+        <button class="btn btn-chip sim-scenario-btn" data-scenario="appointment_message">📅 Simular: Contacto VIP (Cita + Recado)</button>
+        <button class="btn btn-chip sim-scenario-btn" data-scenario="energy_comparison">💡 Simular: Luz vs Factura Repsol</button>
+        <button class="btn btn-chip sim-scenario-btn" data-scenario="telco_comparison">📱 Simular: Móvil vs Factura Yoigo</button>
+        <button class="btn btn-chip sim-scenario-btn" data-scenario="b2b_opportunity">💼 Simular: Cliente B2B (18.000€)</button>
+        <button id="startWebMicBtn" class="btn btn-primary-outline">🎙️ Hablar con mi Micrófono (Gemini Live)</button>
       </div>
     </section>
 
-    <!-- Main Grid -->
+    <!-- Main Live Call Grid -->
     <main class="dashboard-grid">
       <!-- Left Column: Live Call Radar + Big Takeover Action -->
       <section class="left-col">
@@ -45,8 +82,8 @@
         <div id="callStateBanner" class="call-banner idle">
           <div class="pulse-dot"></div>
           <div class="banner-text">
-            <strong id="callBannerTitle">Esperando llamadas entrantes...</strong>
-            <span id="callBannerSub">Tu asistente contestará automáticamente y verás todo aquí en vivo.</span>
+            <strong id="callBannerTitle">Tu secretaria está lista esperando llamadas...</strong>
+            <span id="callBannerSub">Atenderá recados, citas, reservas y filtrará suministros con tus facturas de Repsol y Yoigo.</span>
           </div>
           <div id="callOriginBadge" class="origin-tag">—</div>
         </div>
@@ -54,8 +91,8 @@
         <!-- AI Real-time Classification Card -->
         <div class="card Radar-card">
           <div class="card-header">
-            <h2>🕵️‍♂️ Ficha Detectada en Tiempo Real</h2>
-            <span id="scoreBadge" class="score-badge neutral">Interés: —/10</span>
+            <h2>🕵️‍♀️ Ficha de la Llamada en Curso</h2>
+            <span id="scoreBadge" class="score-badge neutral">Prioridad: —/10</span>
           </div>
 
           <div class="meter-wrap">
@@ -68,7 +105,7 @@
               <div id="callerNameVal" class="info-value">Sin llamada activa</div>
             </div>
             <div class="info-item">
-              <label>Empresa / Entidad</label>
+              <label>Entidad / Relación CRM</label>
               <div id="companyVal" class="info-value">—</div>
             </div>
             <div class="info-item">
@@ -82,26 +119,26 @@
           </div>
 
           <div class="summary-box">
-            <label>📋 Resumen de lo que quieren:</label>
-            <p id="summaryVal">Cuando entre una llamada, tu asistente preguntará quién es y qué necesita, mostrando aquí el resumen al instante.</p>
+            <label>📋 Gestión de tu secretaria en tiempo real:</label>
+            <p id="summaryVal">Cuando entre una llamada, tu secretaria reconocerá si está en tu agenda CRM, comprobará disponibilidad de fechas, tomará recados y comparará facturas.</p>
           </div>
 
           <div id="recommendationBox" class="recommendation-box">
-            <span>💡 Recomendación IA:</span>
+            <span>💡 Acción / Recomendación IA:</span>
             <strong id="recommendationVal">En espera</strong>
           </div>
         </div>
 
         <!-- BIG DECISION PANEL: TAKE OVER OR REJECT -->
         <div class="card decision-card">
-          <h2>⚡ Tu Decisión en Caliente</h2>
-          <p class="decision-hint">Si ves en la transcripción que la llamada te interesa, pulsa el botón verde para que el asistente te la pase al instante:</p>
+          <h2>⚡ Intervenir en Caliente</h2>
+          <p class="decision-hint">Si ves que es una reserva urgente, familiar o cliente y quieres hablar tú, pulsa el botón verde:</p>
 
           <button id="transferMobileBtn" class="btn btn-takeover" disabled>
             <span class="takeover-icon">📲</span>
             <div class="takeover-text">
-              <strong>¡ME INTERESA! DESVIAR A MI MÓVIL</strong>
-              <small id="targetMobileLabel">Pasar llamada en caliente a +34600000000</small>
+              <strong>¡ATENDER YO! DESVIAR A MI MÓVIL</strong>
+              <small id="targetMobileLabel">Pasar llamada en caliente a 639403998</small>
             </div>
           </button>
 
@@ -110,7 +147,7 @@
               🎙️ Atender desde este PC
             </button>
             <button id="hangupBtn" class="btn btn-danger" disabled>
-              📵 Rechazar y Colgar
+              📵 Cortar Llamada
             </button>
           </div>
         </div>
@@ -121,35 +158,37 @@
         <div class="card transcript-card">
           <div class="card-header">
             <div>
-              <h2>💬 Transcripción en Vivo</h2>
-              <p class="card-sub">Todo lo que dice el comercial y lo que responde tu asistente palabra por palabra</p>
+              <h2>💬 Conversación en Directo</h2>
+              <p class="card-sub">Escucha y lee en tiempo real lo que dice quien llama y lo que gestiona tu secretaria</p>
             </div>
             <span id="liveIndicator" class="live-pill hidden">● EN DIRECTO</span>
           </div>
 
           <div id="transcriptContainer" class="transcript-feed">
             <div class="empty-transcript">
-              <div class="empty-icon">🎧</div>
-              <h3>Ninguna conversación en curso</h3>
-              <p>Haz clic arriba en <strong>"💼 Simular: Propuesta B2B Interesante"</strong> o en <strong>"🎙️ Llamada Real con mi Micrófono"</strong> para ver cómo tu asistente filtra la llamada en directo.</p>
+              <div class="empty-icon">👩‍💼</div>
+              <h3>Tu secretaria está al teléfono</h3>
+              <p>Pulsa arriba en <strong>"🏡 Simular: Reserva + Disponibilidad"</strong> o <strong>"📅 Simular: Contacto VIP"</strong> para escucharla trabajar en español de España y recibir alertas en tu Telegram.</p>
             </div>
           </div>
 
-          <!-- Whisper / Quick Orders to Assistant -->
+          <!-- Whisper / Quick Orders to Secretary -->
           <div class="whisper-panel">
-            <label class="whisper-title">🤫 Susurrar orden al asistente (sin hablar tú):</label>
+            <label class="whisper-title">🤫 Susurrar orden en vivo a tu secretaria (o responde desde Telegram):</label>
             <div class="whisper-chips">
-              <button class="chip-btn" data-whisper="Pregúntale cuál es el presupuesto o precio exacto y condiciones.">💰 Preguntar precios</button>
-              <button class="chip-btn" data-whisper="Pídele que me envíe toda la propuesta detallada por correo electrónico y despídete amablemente.">📧 Pedir por email</button>
-              <button class="chip-btn" data-whisper="Dile que ahora mismo estoy en una reunión importante, que si puede dejar un teléfono directo para devolverle la llamada.">⏳ Pedir teléfono directo</button>
-              <button class="chip-btn" data-whisper="Dile educadamente que no nos interesa esta oferta comercial y despídete.">🚫 No me interesa</button>
+              <button class="chip-btn" data-whisper="Cógele el recado completo, su nombre y teléfono y dile que le llamo luego.">📝 Coger recado</button>
+              <button class="chip-btn" data-whisper="Pregúntale qué día y a qué hora le viene bien y anótalo en mi agenda de citas.">📅 Agendar cita</button>
+              <button class="chip-btn" data-whisper="Comprueba si las fechas están libres, dile que son 120 euros la noche y tómale los datos de la reserva.">🏡 Confirmar precio y reserva</button>
+              <button class="chip-btn" data-whisper="Dile que en Repsol pago 0,136 euros el kilovatio hora fijo y 5,75 kW; que si no bajan de 0,120 €/kWh no me interesa.">💡 Comparar con mi Luz (0,136€)</button>
+              <button class="chip-btn" data-whisper="Dile que en Yoigo tengo Fibra 1 Giga, TV y 5 líneas móviles por 112€ IVA incluido; si no incluyen las 5 líneas por menos de 85€ no me interesa.">📱 Comparar con mi Yoigo (5 líneas)</button>
+              <button class="chip-btn" data-whisper="Dile amablemente que no nos interesa y despídete.">🚫 Despedir llamada</button>
             </div>
 
             <form id="whisperForm" class="whisper-form">
               <input
                 type="text"
                 id="whisperInput"
-                placeholder="Escribe qué quieres que le diga o pregunte tu asistente ahora mismo..."
+                placeholder="Escribe cualquier orden para que tu secretaria la diga ahora mismo..."
                 autocomplete="off"
               />
               <button type="submit" id="whisperSendBtn" class="btn btn-primary" disabled>Enviar orden</button>
@@ -158,62 +197,174 @@
         </div>
       </section>
     </main>
+
+    <!-- Secretary Management Hub: Reservas, Agenda/Citas, Recados, Facturas IA & Contactos CRM -->
+    <section class="card secretary-hub">
+      <div class="hub-header">
+        <div>
+          <h2>🗂️ Mesa de Trabajo de tu Secretaria</h2>
+          <p class="card-sub">Reservas con WhatsApp en 1 clic, Calendario .ics, Recados, Analizador de Facturas con IA y Memoria CRM</p>
+        </div>
+
+        <div class="hub-tabs">
+          <button class="hub-tab active" data-tab="reservations">
+            🏡 Reservas y Calendario <span id="badgeReservations" class="tab-count">0</span>
+          </button>
+          <button class="hub-tab" data-tab="appointments">
+            📅 Agenda y Citas <span id="badgeAppointments" class="tab-count">0</span>
+          </button>
+          <button class="hub-tab" data-tab="messages">
+            📝 Recados <span id="badgeMessages" class="tab-count">0</span>
+          </button>
+          <button class="hub-tab" data-tab="invoices">
+            📄 Mis Facturas (Subir PDF/Foto) <span id="badgeInvoices" class="tab-count">2</span>
+          </button>
+          <button class="hub-tab" data-tab="contacts">
+            👥 Contactos VIP / Memoria <span id="badgeContacts" class="tab-count">2</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB 1: RESERVAS + DISPONIBILIDAD -->
+      <div id="tab-reservations" class="hub-pane active">
+        <div class="pane-toolbar">
+          <span>Solicitudes de reserva recogidas + Fechas bloqueadas para que tu secretaria consulte disponibilidad real</span>
+          <div class="sec-btn-group">
+            <button id="addBlockedDateBtn" class="btn btn-chip">🚫 Bloquear fechas ocupadas</button>
+            <button id="addReservationBtn" class="btn btn-chip">➕ Añadir reserva manual</button>
+          </div>
+        </div>
+        <div id="blockedDatesBar" class="blocked-dates-bar"></div>
+        <div id="reservationsList" class="secretary-list"></div>
+      </div>
+
+      <!-- TAB 2: AGENDA Y CITAS -->
+      <div id="tab-appointments" class="hub-pane">
+        <div class="pane-toolbar">
+          <span>Citas y reuniones anotadas en tu calendario (descargables a Google Calendar y confirmación por WhatsApp)</span>
+          <button id="addAppointmentBtn" class="btn btn-chip">➕ Añadir cita manual</button>
+        </div>
+        <div id="appointmentsList" class="secretary-list"></div>
+      </div>
+
+      <!-- TAB 3: RECADOS -->
+      <div id="tab-messages" class="hub-pane">
+        <div class="pane-toolbar">
+          <span>Recados, avisos y llamadas pendientes de devolver con respuesta rápida por WhatsApp</span>
+          <button id="addMessageBtn" class="btn btn-chip">➕ Añadir recado manual</button>
+        </div>
+        <div id="messagesList" class="secretary-list"></div>
+      </div>
+
+      <!-- TAB 4: FACTURAS DE LUZ, MÓVIL, GAS O SEGUROS + SUBIDOR IA -->
+      <div id="tab-invoices" class="hub-pane">
+        <div class="pane-toolbar">
+          <span>Sube cualquier factura en PDF o foto: Gemini extraerá tus precios y actualizará las reglas de negociación de tu secretaria</span>
+          <div>
+            <input type="file" id="invoiceFileInput" accept=".pdf,image/*" class="hidden" />
+            <button id="uploadInvoiceBtn" class="btn btn-primary">📤 Subir Factura (PDF o Foto) y Analizar con IA</button>
+          </div>
+        </div>
+        <div id="invoicesList" class="invoices-grid"></div>
+      </div>
+
+      <!-- TAB 5: CONTACTOS VIP Y MEMORIA CRM -->
+      <div id="tab-contacts" class="hub-pane">
+        <div class="pane-toolbar">
+          <span>Cuando llame uno de estos números, tu secretaria lo reconocerá por su nombre y recordará sus gestiones anteriores</span>
+          <button id="addContactBtn" class="btn btn-chip">➕ Añadir Contacto / VIP</button>
+        </div>
+        <div id="contactsList" class="secretary-list"></div>
+      </div>
+    </section>
   </div>
 
   <!-- Settings Modal -->
   <div id="settingsModal" class="modal-backdrop hidden">
     <div class="modal-card">
       <div class="modal-header">
-        <h2>⚙️ Configuración de tu Asistente y Desvío</h2>
+        <h2>⚙️ Configuración de tu Secretaria, Telegram, Twilio y Facturas</h2>
         <button id="closeSettingsBtn" class="close-btn">✕</button>
       </div>
 
       <form id="settingsForm" class="settings-form">
         <div class="form-section">
-          <h3>1. Motor de Voz IA (Gemini 3.8 Live)</h3>
-          <label>
-            Gemini API Key
-            <input type="password" id="cfgGeminiKey" placeholder="AIzaSy..." />
-            <small>Necesaria para llamadas de voz en vivo con micrófono o teléfono.</small>
-          </label>
-          <label>
-            Voz del Asistente
-            <select id="cfgVoiceName">
-              <option value="Aoede">Aoede (Femenina, natural y ejecutiva)</option>
-              <option value="Puck">Puck (Masculina, dinámica)</option>
-              <option value="Kore">Kore (Femenina, serena)</option>
-              <option value="Charon">Charon (Masculina, formal)</option>
-            </select>
-          </label>
+          <h3>1. Motor de Voz IA (Gemini 3.8 Live — Español de España)</h3>
+          <div class="form-row">
+            <label>
+              Gemini API Key
+              <input type="password" id="cfgGeminiKey" placeholder="Tu clave API de Gemini..." />
+            </label>
+            <label>
+              Voz de tu Secretaria (es-ES)
+              <select id="cfgVoiceName">
+                <option value="Aoede">Aoede (Femenina, ejecutiva y natural)</option>
+                <option value="Kore">Kore (Femenina, cercana y serena)</option>
+                <option value="Puck">Puck (Masculina, dinámica)</option>
+                <option value="Charon">Charon (Masculina, formal)</option>
+              </select>
+            </label>
+          </div>
         </div>
 
         <div class="form-section">
-          <h3>2. Tus Datos y Número de Desvío</h3>
+          <h3>2. Tus Datos, Tarifa de Reservas y Reglas de Secretaria</h3>
           <div class="form-row">
             <label>
-              Tu Nombre (Cómo te llama el asistente)
-              <input type="text" id="cfgOwnerName" placeholder="Ej. Carlos" required />
+              Tu Nombre
+              <input type="text" id="cfgOwnerName" placeholder="Fernando" required />
             </label>
             <label>
-              📱 Tu Móvil Personal (Adonde se desvía si te interesa)
-              <input type="text" id="cfgPersonalPhone" placeholder="+34600000000" required />
+              📱 Tu Móvil Personal (Adonde se desvía)
+              <input type="text" id="cfgPersonalPhone" placeholder="639403998" required />
+            </label>
+          </div>
+          <div class="form-row">
+            <label>
+              Tu Email
+              <input type="email" id="cfgOwnerEmail" placeholder="contacto@tudominio.com" />
+            </label>
+            <label>
+              🏡 Precio / Tarifa por Noche o Consulta
+              <input type="text" id="cfgNightlyRate" placeholder="120 €/noche (mínimo 2 noches)" />
             </label>
           </div>
           <label>
-            Tu Email para recibir propuestas comerciales
-            <input type="email" id="cfgOwnerEmail" placeholder="contacto@tudominio.com" />
+            Instrucciones Generales de tu Secretaria
+            <textarea id="cfgFilterRules" rows="2"></textarea>
           </label>
           <label>
-            Tus Reglas de Filtrado (¿Qué descartar y qué te interesa?)
-            <textarea id="cfgFilterRules" rows="3"></textarea>
+            📄 Contexto de tus Facturas (se actualiza solo al subir facturas en PDF/foto)
+            <textarea id="cfgContractsContext" rows="5"></textarea>
           </label>
         </div>
 
         <div class="form-section">
-          <h3>3. Telefonía Real con Twilio (Opcional)</h3>
+          <h3>3. Alertas y Control en Vivo por Telegram (@fraypericobot)</h3>
+          <div class="form-row">
+            <label>
+              Telegram Bot Token
+              <input type="password" id="cfgTelegramToken" placeholder="8613561235:AA..." />
+            </label>
+            <label>
+              Tu Telegram Chat ID
+              <input type="text" id="cfgTelegramChatId" placeholder="161518227" />
+            </label>
+          </div>
+          <small style="color: var(--muted); font-size: 0.76rem;">
+            💡 Puedes responder a los mensajes de tu bot en Telegram durante una llamada para susurrar órdenes a tu secretaria o escribir <code>/desviar</code> para pasártela al móvil.
+          </small>
+        </div>
+
+        <div class="form-section">
+          <h3>4. Telefonía Real con Twilio + Truco Desvío en Yoigo</h3>
           <p class="webhook-note">
-            Apunta el webhook de voz de tu número Twilio a: <code>https://tu-dominio/twilio/voice</code>
+            Webhook de voz de tu número Twilio: <code>https://tu-dominio/twilio/voice</code>
           </p>
+          <label>
+            📞 Número de Teléfono de Twilio (El número de tu Secretaria IA)
+            <input type="text" id="cfgTwilioPhone" placeholder="Ej. +34910000000" />
+          </label>
           <div class="form-row">
             <label>
               Twilio Account SID
@@ -223,6 +374,12 @@
               Twilio Auth Token
               <input type="password" id="cfgTwilioToken" placeholder="••••••••••••••••" />
             </label>
+          </div>
+          <div class="webhook-note" style="background: rgba(16,185,129,0.1); padding: 10px; border-radius: 8px; border: 1px solid rgba(16,185,129,0.3);">
+            <strong>📲 Códigos para marcar en tu móvil Yoigo (639403998):</strong><br/>
+            • Desviar a tu secretaria cuando <strong>cuelgas/rechazas</strong> la llamada: <code id="gsmCodeBusy">**67*+34TUNUMERO#</code><br/>
+            • Desviar si <strong>no contestas en 15 seg</strong>: <code id="gsmCodeNoAnswer">**61*+34TUNUMERO*11*15#</code><br/>
+            • Desactivar todos los desvíos: <code>##002#</code>
           </div>
         </div>
 

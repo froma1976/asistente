@@ -21,15 +21,131 @@ if (fs.existsSync(envPath)) {
 
 // Runtime settings (editable from UI and persisted to config.json)
 const configPath = path.join(__dirname, 'config.json');
+const DEFAULT_CONTRACTS_CONTEXT = `1) FACTURA DE LUZ ACTUAL (REPSOL - Sober, Lugo):
+- Titular: Fernando Rodríguez Magdalena (Peaje 2.0TD, Mercado Libre, Producto: Tarifa Largo Plazo Precio Fijo 5Y 100R).
+- Potencia contratada: 5,75 kW en Punta y 5,75 kW en Valle (Término fijo: P1 a 0,074555 €/kW·día y P2 a 0,067552 €/kW·día = 23,69 € en 29 días).
+- Precio de la energía: 0,136146 €/kWh fijo las 24h (69 kWh consumidos = 9,39 €).
+- Servicios adicionales: Tu Asistente 24h (3,93 €/mes).
+- Total última factura: 48,68 € (impuestos incluidos).
+- CRITERIO LUZ: Solo interesa escuchar ofertas si garantizan por escrito un precio fijo inferior a 0,120 €/kWh sin servicios obligatorios ni permanencia con penalización. Si ofrecen precios más caros o no dan el precio exacto por kWh, rechazar educadamente indicando que ya tienes 0,136 €/kWh fijo.
+
+2) FACTURA DE FIBRA Y MÓVIL ACTUAL (YOIGO - Sober, Lugo):
+- Titular: Fernando Rodríguez Magdalena.
+- Paquete incluido en cuota mensual de telecomunicaciones (112,00 €/mes IVA incluido):
+  * Fijo 986471992 + Móvil principal 639403998: Fibra 1 Gbps + La Sinfín GB Ilimitados y llamadas ilimitadas (76,00 €/mes).
+  * TV Premium Extra (6,00 €/mes).
+  * 4 líneas móviles adicionales con llamadas ilimitadas: 722225085 (Sinfín 20GB: 9€), 722152119 (La Dúo Principal: 6€), 616442444 (Sinfín Adicional: 6€) y 609873029 (Sinfín 20GB: 9€).
+- Terminales financiados asociados (38,50 €/mes adicionales, total recibo 152,00 €): Samsung Galaxy S24 Ultra (22,00 €/mes, cuota 27/36, pendiente 577€) y Ray-Ban Meta Skyler (16,50 €/mes, cuota 17/24).
+- CRITERIO TELEFONÍA: Solo interesa si la operadora incluye Fibra 1 Gbps + las 5 líneas móviles (con la principal ilimitada) por menos de 85 €/mes IVA incluido precio definitivo y asume o compensa la financiación pendiente. Si no igualan las 5 líneas + Fibra 1Gb mejorando claramente ese precio, rechazar amablemente.
+
+3) PRIVACIDAD ESTRICTA:
+- NUNCA reveles por teléfono datos confidenciales de las facturas como el DNI, el código CUPS completo, dirección exacta ni números de cuenta bancaria (IBAN).`;
+
+const DEFAULT_INVOICES = [
+  {
+    id: 'inv_repsol_luz',
+    provider: 'Repsol Comercializadora de Electricidad y Gas',
+    category: 'Luz / Energía',
+    subtitle: 'Suministro en Sober (Lugo) • Peaje 2.0TD • Mercado Libre',
+    monthlyTotal: '48,68 € / mes',
+    icon: '💡',
+    theme: 'energy',
+    keyRates: [
+      'Producto: Tarifa Largo Plazo Precio Fijo 5Y 100R',
+      'Potencia contratada: 5,75 kW Punta y 5,75 kW Valle (23,69 € en 29 días)',
+      'Precio Energía Activa: 0,136146 €/kWh fijo 24h (69 kWh = 9,39 €)',
+      'Servicios añadidos: Tu Asistente 24h (3,93 €/mes)',
+    ],
+    negotiationRule:
+      'Exigir precio fijo inferior a 0,120 €/kWh sin servicios obligatorios ni permanencia. Si ofrecen más de 0,136 €/kWh, rechazar en el acto.',
+    uploadedAt: '19/10/2026',
+  },
+  {
+    id: 'inv_yoigo_telco',
+    provider: 'Yoigo (Xfera Móviles)',
+    category: 'Fibra + 5 Móviles + TV',
+    subtitle: 'Sober (Lugo) • Fijo 986471992 + Principal 639403998 + 4 líneas',
+    monthlyTotal: '112,00 € / mes (+38,50€ plazos)',
+    icon: '📱',
+    theme: 'telco',
+    keyRates: [
+      'Pack Principal (76,00 €): Fibra 1 Gbps + Móvil 639403998 con GB Ilimitados y llamadas ilimitadas',
+      'Televisión (6,00 €): TV Premium Extra',
+      '4 Líneas Móviles Adicionales (30,00 €): 722225085 (20GB: 9€), 722152119 (Dúo: 6€), 616442444 (Sinfín: 6€) y 609873029 (20GB: 9€)',
+      'Terminales Financiados (38,50 €/mes): Galaxy S24 Ultra (22€/mes, pendiente 577€) y Ray-Ban Meta Skyler (16,50€/mes)',
+    ],
+    negotiationRule:
+      'Exigir que entren las 5 líneas móviles + Fibra 1 Gbps por menos de 85 €/mes IVA incluido definitivo y compensando terminales.',
+    uploadedAt: '01/11/2026',
+  },
+];
+
+const DEFAULT_CONTACTS = [
+  {
+    id: 'cnt_elena',
+    name: 'Elena Castro (Asesoría Fiscal)',
+    phone: '+34 982 45 11 08',
+    relation: 'Asesoría / Gestoría Monforte',
+    vip: true,
+    notes: 'Lleva los trimestres e impuestos de Fernando. Prioridad alta.',
+  },
+  {
+    id: 'cnt_martin',
+    name: 'Martín Vázquez',
+    phone: '+34 648 92 15 30',
+    relation: 'Huésped Casa Rural',
+    vip: false,
+    notes: 'Interesado en reserva de fin de semana para 4 personas con mascota pequeña.',
+  },
+];
+
+const BUSINESS_TEMPLATES = {
+  full_360: {
+    name: '🌟 Secretaria 360º (Personal + Casa Rural + Facturas)',
+    nightlyRate: '120 €/noche (mínimo 2 noches)',
+    filterRules:
+      'Actuar como mi secretaria personal 360º: recoger recados detallados, agendar citas en el calendario, comprobar disponibilidad y tomar reservas de alojamiento rural (120 €/noche), pasarme llamadas de contactos VIP o urgentes a mi móvil (639403998), y comparar ofertas de luz o telefonía con mis facturas reales de Repsol y Yoigo.',
+  },
+  rural_hotel: {
+    name: '🏡 Alojamiento Rural / Casa Rural / Hotel',
+    nightlyRate: '120 €/noche (casa completa hasta 6 plazas)',
+    filterRules:
+      'Prioridad absoluta a huéspedes y reservas de alojamiento rural: consultar disponibilidad de fechas con check_availability, informar del precio (120 €/noche, entrada desde las 16:00h y salida hasta las 12:00h, se admiten mascotas pequeñas avisando antes), recoger nombre, teléfono, fechas y número de huéspedes con take_reservation.',
+  },
+  autonomo_oficios: {
+    name: '🔧 Autónomo / Oficios / Logística / Empresa',
+    nightlyRate: 'Presupuesto según servicio',
+    filterRules:
+      'Atender clientes y proveedores mientras estoy trabajando: si es una urgencia o avería, tomar dirección exacta, teléfono y descripción en un recado urgente (take_message) y avisarme para desviar al móvil. Si piden presupuesto o cita de visita, agendar día y hora con schedule_appointment.',
+  },
+  clinica_despacho: {
+    name: '🩺 Clínica / Despacho / Asesoría Profesional',
+    nightlyRate: '60 € / consulta',
+    filterRules:
+      'Atender pacientes o clientes de despacho: comprobar huecos libres en la agenda con check_availability, agendar citas con schedule_appointment indicando motivo y teléfono, y recoger recados administrativos con take_message.',
+  },
+  personal_shield: {
+    name: '🛡️ Uso Personal + Negociador de Facturas',
+    nightlyRate: 'No aplica',
+    filterRules:
+      'Atender llamadas personales (familia, bancos, repartidores, médicos) tomando recado o desviando a mi móvil, y negociar con mano dura cualquier llamada comercial de luz, gas, fibra o seguros comparando con mis facturas actuales.',
+  },
+};
+
 let appConfig = {
   geminiApiKey: process.env.GEMINI_API_KEY || '',
-  ownerName: process.env.OWNER_NAME || 'Carlos',
-  personalPhoneNumber: process.env.PERSONAL_PHONE_NUMBER || '+34600000000',
+  ownerName: process.env.OWNER_NAME || 'Fernando',
+  personalPhoneNumber: process.env.PERSONAL_PHONE_NUMBER || '639403998',
   ownerEmail: process.env.OWNER_EMAIL || 'contacto@ejemplo.com',
   voiceName: 'Aoede',
-  filterRules:
-    process.env.FILTER_RULES ||
-    'Descartar telemarketing genérico de luz, gas, telefonía, fibra y seguros. Mostrar interés y pedir detalles concretos (empresa, presupuesto, propuesta) si son posibles clientes, partners estratégicos, inversores o servicios B2B relevantes.',
+  businessTemplate: 'full_360',
+  nightlyRate: '120 €/noche (mínimo 2 noches)',
+  filterRules: BUSINESS_TEMPLATES.full_360.filterRules,
+  contractsContext: DEFAULT_CONTRACTS_CONTEXT,
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
+  telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
+  telegramNotifications: true,
+  autoSmsConfirmation: true,
   twilioAccountSid: process.env.TWILIO_ACCOUNT_SID || '',
   twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
   twilioPhoneNumber: process.env.TWILIO_PHONE_NUMBER || '',
@@ -40,6 +156,15 @@ if (fs.existsSync(configPath)) {
   try {
     const saved = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     appConfig = { ...appConfig, ...saved };
+    if (!appConfig.contractsContext) {
+      appConfig.contractsContext = DEFAULT_CONTRACTS_CONTEXT;
+    }
+    if (!appConfig.telegramBotToken && process.env.TELEGRAM_BOT_TOKEN) {
+      appConfig.telegramBotToken = process.env.TELEGRAM_BOT_TOKEN;
+    }
+    if (!appConfig.telegramChatId && process.env.TELEGRAM_CHAT_ID) {
+      appConfig.telegramChatId = process.env.TELEGRAM_CHAT_ID;
+    }
   } catch (e) {
     console.error('Error leyendo config.json:', e.message);
   }
@@ -51,6 +176,65 @@ function saveConfig() {
   } catch (e) {
     console.error('Error guardando config.json:', e.message);
   }
+}
+
+// Persistent Secretary Data (Messages, Appointments, Reservations, Invoices, Contacts, BlockedDates, History)
+const secretaryDataPath = path.join(__dirname, 'secretary_data.json');
+let secretaryData = {
+  messages: [],
+  appointments: [],
+  reservations: [],
+  invoices: DEFAULT_INVOICES,
+  contacts: DEFAULT_CONTACTS,
+  blockedDates: [
+    { id: 'blk_1', from: '28/11/2026', to: '29/11/2026', reason: 'Ocupado - Puente reservado en Booking' },
+  ],
+  stats: {
+    spamBlocked: 4,
+    timeSavedMinutes: 18,
+    estimatedValueEur: 480,
+  },
+  history: [],
+};
+
+if (fs.existsSync(secretaryDataPath)) {
+  try {
+    const loaded = JSON.parse(fs.readFileSync(secretaryDataPath, 'utf8'));
+    secretaryData = {
+      messages: Array.isArray(loaded.messages) ? loaded.messages : [],
+      appointments: Array.isArray(loaded.appointments) ? loaded.appointments : [],
+      reservations: Array.isArray(loaded.reservations) ? loaded.reservations : [],
+      invoices: Array.isArray(loaded.invoices) && loaded.invoices.length > 0 ? loaded.invoices : DEFAULT_INVOICES,
+      contacts: Array.isArray(loaded.contacts) && loaded.contacts.length > 0 ? loaded.contacts : DEFAULT_CONTACTS,
+      blockedDates: Array.isArray(loaded.blockedDates) ? loaded.blockedDates : secretaryData.blockedDates,
+      stats: loaded.stats ? { ...secretaryData.stats, ...loaded.stats } : secretaryData.stats,
+      history: Array.isArray(loaded.history) ? loaded.history : [],
+    };
+  } catch (e) {
+    console.error('Error leyendo secretary_data.json:', e.message);
+  }
+}
+
+function saveSecretaryData() {
+  try {
+    fs.writeFileSync(secretaryDataPath, JSON.stringify(secretaryData, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error guardando secretary_data.json:', e.message);
+  }
+}
+
+function rebuildContractsContextFromInvoices() {
+  const invoices = secretaryData.invoices || [];
+  if (invoices.length === 0) return;
+  const blocks = invoices.map((inv, idx) => {
+    const rates = (inv.keyRates || []).map((r) => `  * ${r}`).join('\n');
+    return `${idx + 1}) FACTURA ACTUAL DE ${inv.category.toUpperCase()} (${inv.provider} — ${inv.monthlyTotal}):\n${rates}\n- REGLA DE NEGOCIACIÓN: ${inv.negotiationRule}`;
+  });
+  blocks.push(
+    `${invoices.length + 1}) PRIVACIDAD ESTRICTA:\n- NUNCA reveles por teléfono datos confidenciales como DNI, CUPS completo, dirección exacta ni cuenta bancaria (IBAN).`
+  );
+  appConfig.contractsContext = blocks.join('\n\n');
+  saveConfig();
 }
 
 // ============================================================================
@@ -254,10 +438,9 @@ function pcm24kToMulaw8k(pcm24kBuf) {
 }
 
 // ============================================================================
-// Dashboard Clients & Call State Management
+// Dashboard Clients, Secretary Records & Call State Management
 // ============================================================================
 const dashboardClients = new Set();
-const callHistory = [];
 let activeCall = null;
 let simulationTimers = [];
 
@@ -268,26 +451,488 @@ function broadcastToDashboard(event) {
   }
 }
 
+function broadcastSecretaryUpdate(noticeText) {
+  saveSecretaryData();
+  broadcastToDashboard({
+    type: 'secretary_update',
+    secretaryData,
+    notice: noticeText || null,
+  });
+}
+
+// ============================================================================
+// Feature 1: Live Telegram Bot Alerts & Bidirectional Control (@fraypericobot)
+// ============================================================================
+let lastTelegramUpdateId = 0;
+
+async function sendTelegramNotification(text, force = false) {
+  const token = appConfig.telegramBotToken;
+  const chatId = appConfig.telegramChatId;
+  if (!token || !chatId || (!appConfig.telegramNotifications && !force)) {
+    return { ok: false, skipped: true };
+  }
+  try {
+    const url = `https://api.telegram.org/bot${token}/sendMessage`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'HTML',
+      }),
+    });
+    const data = await res.json();
+    return { ok: Boolean(data.ok), data };
+  } catch (err) {
+    console.error('Error enviando alerta Telegram:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+async function pollTelegramUpdates() {
+  const token = appConfig.telegramBotToken;
+  const allowedChatId = String(appConfig.telegramChatId || '');
+  if (!token || !allowedChatId) return;
+
+  try {
+    const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${
+      lastTelegramUpdateId + 1
+    }&timeout=0`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.ok || !Array.isArray(data.result)) return;
+
+    for (const upd of data.result) {
+      if (upd.update_id > lastTelegramUpdateId) {
+        lastTelegramUpdateId = upd.update_id;
+      }
+      const msg = upd.message;
+      if (!msg || !msg.text || String(msg.chat?.id) !== allowedChatId) continue;
+
+      const text = msg.text.trim();
+      if (text === '/estado' || text === '/status') {
+        const statusMsg = activeCall
+          ? `📞 <b>Llamada activa ahora mismo:</b>\nDe: ${activeCall.fromNumber}\nQuien: ${activeCall.classification?.callerName}\nResumen: ${activeCall.classification?.summary}`
+          : `✅ <b>Tu secretaria IA está en línea</b>\n🏡 Reservas: ${
+              (secretaryData.reservations || []).length
+            } | 📅 Citas: ${(secretaryData.appointments || []).length} | 📝 Recados: ${
+              (secretaryData.messages || []).length
+            }`;
+        await sendTelegramNotification(statusMsg, true);
+      } else if (text === '/desviar' && activeCall && activeCall.status === 'screening') {
+        await redirectTwilioCallToMobile(activeCall.callSid, appConfig.personalPhoneNumber);
+        activeCall.status = 'transferred';
+        appendTranscriptChunk('system', `📲 Desvío activado por ${appConfig.ownerName} desde Telegram.`);
+        await sendTelegramNotification(
+          `📲 Desviando llamada activa a tu móvil (${appConfig.personalPhoneNumber})...`,
+          true
+        );
+      } else if (!text.startsWith('/') && activeCall && activeCall.status === 'screening') {
+        appendTranscriptChunk('owner_whisper', `⚡ Orden desde Telegram: "${text}"`);
+        if (activeCall.geminiSession) {
+          activeCall.geminiSession.sendWhisper(text);
+        } else if (activeCall.source === 'simulation') {
+          speakAndAppendTranscript(
+            'assistant',
+            `Me indica ${appConfig.ownerName} ahora mismo desde su móvil lo siguiente: ${text}`,
+            appConfig.voiceName || 'Aoede'
+          );
+        }
+        await sendTelegramNotification(`🤫 Orden susurrada a tu secretaria en vivo: "${text}"`, true);
+      }
+    }
+  } catch {}
+}
+
+// Initialize Telegram offset & start polling every 4s
+(async () => {
+  if (appConfig.telegramBotToken) {
+    try {
+      const r = await fetch(
+        `https://api.telegram.org/bot${appConfig.telegramBotToken}/getUpdates?offset=-1`
+      );
+      const d = await r.json();
+      if (d.ok && d.result?.length) {
+        lastTelegramUpdateId = d.result[d.result.length - 1].update_id;
+      }
+    } catch {}
+  }
+  setInterval(pollTelegramUpdates, 4000);
+})();
+
+// ============================================================================
+// Feature 3 & 4: Caller Memory CRM + Calendar Availability Engine
+// ============================================================================
+function normalizeDigits(phone) {
+  return String(phone || '').replace(/\D/g, '').slice(-9);
+}
+
+function getCallerMemoryContext(fromNumber) {
+  const digits = normalizeDigits(fromNumber);
+  if (!digits || digits.length < 6) return null;
+
+  const matchedContact = (secretaryData.contacts || []).find(
+    (c) => normalizeDigits(c.phone) === digits
+  );
+  const pastReservations = (secretaryData.reservations || []).filter(
+    (r) => normalizeDigits(r.phone) === digits
+  );
+  const pastAppointments = (secretaryData.appointments || []).filter(
+    (a) => normalizeDigits(a.phone) === digits
+  );
+  const pastMessages = (secretaryData.messages || []).filter(
+    (m) => normalizeDigits(m.phone) === digits
+  );
+
+  if (
+    !matchedContact &&
+    pastReservations.length === 0 &&
+    pastAppointments.length === 0 &&
+    pastMessages.length === 0
+  ) {
+    return null;
+  }
+
+  const lines = [];
+  if (matchedContact) {
+    lines.push(
+      `- CONTACTO CONOCIDO${matchedContact.vip ? ' [🌟 VIP PRIORITARIO]' : ''}: ${
+        matchedContact.name
+      } (${matchedContact.relation || 'Contacto'}). Notas: ${matchedContact.notes || ''}`
+    );
+  }
+  if (pastReservations.length > 0) {
+    const r = pastReservations[0];
+    lines.push(
+      `- RESERVA PREVIA DE ESTE TELÉFONO: ${r.guestName} para ${r.guestsCount} personas del ${r.checkIn} al ${r.checkOut} (${r.propertyOrService}). Notas: ${r.specialRequests}`
+    );
+  }
+  if (pastAppointments.length > 0) {
+    const a = pastAppointments[0];
+    lines.push(
+      `- CITA PREVIA EN AGENDA: "${a.title}" con ${a.withPerson} el ${a.date} a las ${a.time}.`
+    );
+  }
+  if (pastMessages.length > 0) {
+    const m = pastMessages[0];
+    lines.push(`- RECADO ANTERIOR: "${m.subject}" — ${m.message}`);
+  }
+  return {
+    callerName:
+      matchedContact?.name ||
+      pastReservations[0]?.guestName ||
+      pastAppointments[0]?.withPerson ||
+      pastMessages[0]?.callerName ||
+      null,
+    relation: matchedContact?.relation || null,
+    vip: Boolean(matchedContact?.vip),
+    summaryText: lines.join('\n'),
+  };
+}
+
+function upsertContactFromAction({ name, phone, relation, notes }) {
+  const digits = normalizeDigits(phone);
+  if (!name || !digits || digits.length < 6) return;
+  const existing = (secretaryData.contacts || []).find((c) => normalizeDigits(c.phone) === digits);
+  if (existing) {
+    if (notes && !existing.notes.includes(notes)) {
+      existing.notes = `${existing.notes ? existing.notes + ' | ' : ''}${notes}`.slice(0, 220);
+    }
+  } else {
+    secretaryData.contacts.unshift({
+      id: 'cnt_' + Date.now(),
+      name,
+      phone,
+      relation: relation || 'Contacto Telefónico',
+      vip: false,
+      notes: notes || '',
+    });
+  }
+}
+
+function checkCalendarAvailability({ checkIn, checkOut, guestsCount }) {
+  const reqIn = String(checkIn || '').toLowerCase();
+  const reqOut = String(checkOut || '').toLowerCase();
+
+  const conflicts = [];
+  for (const blk of secretaryData.blockedDates || []) {
+    if (
+      reqIn.includes(String(blk.from).toLowerCase()) ||
+      reqOut.includes(String(blk.to).toLowerCase())
+    ) {
+      conflicts.push(`Fechas ocupadas (${blk.from} al ${blk.to}: ${blk.reason})`);
+    }
+  }
+  for (const res of secretaryData.reservations || []) {
+    if (
+      res.status === 'completado' &&
+      (reqIn.includes(String(res.checkIn).toLowerCase()) ||
+        String(res.checkIn).toLowerCase().includes(reqIn))
+    ) {
+      conflicts.push(`Ya reservado por ${res.guestName} (${res.checkIn} - ${res.checkOut})`);
+    }
+  }
+
+  const available = conflicts.length === 0;
+  const rateInfo = appConfig.nightlyRate || '120 €/noche';
+  appendTranscriptChunk(
+    'system',
+    `🗓️ Comprobación de calendario (${checkIn} -> ${checkOut}): ${
+      available ? `✅ DISPONIBLE (${rateInfo})` : `❌ OCUPADO (${conflicts.join(', ')})`
+    }`
+  );
+  return {
+    available,
+    nightlyRate: rateInfo,
+    conflicts,
+    message: available
+      ? `Fechas disponibles del ${checkIn} al ${checkOut} para ${
+          guestsCount || 2
+        } personas. Tarifa estándar: ${rateInfo}.`
+      : `Fechas NO disponibles: ${conflicts.join('; ')}`,
+  };
+}
+
+// ============================================================================
+// Feature 2: Invoice PDF / Image Analyzer with Gemini Vision
+// ============================================================================
+async function analyzeInvoiceWithGemini({ base64Data, mimeType, fileName }) {
+  const apiKey = appConfig.geminiApiKey;
+  if (!apiKey) {
+    throw new Error('Falta configurar GEMINI_API_KEY.');
+  }
+
+  const prompt = `Analiza esta factura española (${fileName || 'documento'}) y extrae sus datos clave en JSON estricto con este esquema exacto:
+{
+  "provider": "Nombre de la compañía (ej. Repsol, Yoigo, Iberdrola, Movistar, Mapfre...)",
+  "category": "Categoría corta (ej. Luz / Energía, Fibra y Móvil, Gas, Seguro)",
+  "subtitle": "Resumen de ubicación o contrato en 1 línea corta",
+  "monthlyTotal": "Importe total de la factura con símbolo € (ej. 48,68 € / mes)",
+  "icon": "Un emoji representativo (💡, 📱, 🔥, 🛡️)",
+  "theme": "energy o telco",
+  "keyRates": [
+    "Dato clave 1 con cifras exactas (ej. Potencia contratada: 5,75 kW)",
+    "Dato clave 2 con precio unitario exacto (ej. Precio energía: 0,136 €/kWh fijo)",
+    "Dato clave 3 (servicios, líneas incluidas o permanencias)"
+  ],
+  "negotiationRule": "Instrucción directa para la secretaria telefónica indicando a partir de qué precio exacto aceptar o rechazar ofertas de la competencia."
+}`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(
+    apiKey
+  )}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: mimeType || 'application/pdf',
+                data: base64Data,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        responseMimeType: 'application/json',
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Error Gemini Vision (${res.status}): ${errText.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+  const parsed = JSON.parse(rawJson);
+
+  const newInvoice = {
+    id: 'inv_' + Date.now(),
+    provider: parsed.provider || 'Proveedor Detectado',
+    category: parsed.category || 'Suministro / Servicio',
+    subtitle: parsed.subtitle || fileName || 'Factura analizada con IA',
+    monthlyTotal: parsed.monthlyTotal || '— €',
+    icon: parsed.icon || '📄',
+    theme: parsed.theme === 'telco' ? 'telco' : 'energy',
+    keyRates: Array.isArray(parsed.keyRates) ? parsed.keyRates : [],
+    negotiationRule:
+      parsed.negotiationRule ||
+      'Exigir mejora de al menos un 15% respecto a los precios actuales sin permanencia.',
+    uploadedAt: new Date().toLocaleDateString('es-ES'),
+  };
+
+  secretaryData.invoices.unshift(newInvoice);
+  rebuildContractsContextFromInvoices();
+  broadcastSecretaryUpdate(`Nueva factura analizada: ${newInvoice.provider}`);
+  return newInvoice;
+}
+
+function addMessageRecord({ callerName, phone, subject, message, urgency }) {
+  const item = {
+    id: 'rec_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+    callerName: callerName || activeCall?.classification?.callerName || 'Interlocutor',
+    phone: phone || activeCall?.fromNumber || 'No indicado',
+    subject: subject || 'Recado telefónico',
+    message: message || '',
+    urgency: urgency || 'normal',
+    status: 'pendiente',
+    createdAt: new Date().toLocaleString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+  };
+  secretaryData.messages.unshift(item);
+  upsertContactFromAction({
+    name: item.callerName,
+    phone: item.phone,
+    relation: 'Recado',
+    notes: `${item.subject}: ${item.message}`,
+  });
+  appendTranscriptChunk('system', `📝 Recado guardado de ${item.callerName}: "${item.message}"`);
+  broadcastSecretaryUpdate(`Nuevo recado de ${item.callerName}`);
+  sendTelegramNotification(
+    `📝 <b>Nuevo Recado para ${appConfig.ownerName}</b>\n👤 <b>De:</b> ${item.callerName}\n📞 <b>Tel:</b> ${item.phone}\n📌 <b>Asunto:</b> ${item.subject}\n💬 <b>Mensaje:</b> ${item.message}`
+  );
+  return item;
+}
+
+function addAppointmentRecord({ title, withPerson, phone, date, time, locationOrChannel, notes }) {
+  const item = {
+    id: 'apt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+    title: title || `Cita con ${withPerson || 'contacto'}`,
+    withPerson: withPerson || activeCall?.classification?.callerName || 'Contacto',
+    phone: phone || activeCall?.fromNumber || 'No indicado',
+    date: date || 'Próximamente',
+    time: time || 'Por confirmar',
+    locationOrChannel: locationOrChannel || 'Teléfono / Presencial',
+    notes: notes || '',
+    status: 'programada',
+    createdAt: new Date().toLocaleString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+  };
+  secretaryData.appointments.unshift(item);
+  upsertContactFromAction({
+    name: item.withPerson,
+    phone: item.phone,
+    relation: 'Cita Agenda',
+    notes: `Cita ${item.date} ${item.time}: ${item.title}`,
+  });
+  appendTranscriptChunk(
+    'system',
+    `📅 Cita anotada en agenda: ${item.title} (${item.date} a las ${item.time})`
+  );
+  broadcastSecretaryUpdate(`Nueva cita agendada: ${item.title}`);
+  sendTelegramNotification(
+    `📅 <b>Nueva Cita Agendada en tu Calendario</b>\n📌 <b>Motivo:</b> ${item.title}\n👤 <b>Con:</b> ${item.withPerson} (${item.phone})\n🕒 <b>Cuándo:</b> ${item.date} a las ${item.time}\n📍 <b>Lugar:</b> ${item.locationOrChannel}\n📝 <b>Notas:</b> ${item.notes || '—'}`
+  );
+  return item;
+}
+
+function addReservationRecord({
+  guestName,
+  phone,
+  checkIn,
+  checkOut,
+  guestsCount,
+  propertyOrService,
+  specialRequests,
+}) {
+  const item = {
+    id: 'res_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+    guestName: guestName || activeCall?.classification?.callerName || 'Cliente',
+    phone: phone || activeCall?.fromNumber || 'No indicado',
+    checkIn: checkIn || 'Por confirmar',
+    checkOut: checkOut || 'Por confirmar',
+    guestsCount: Number(guestsCount || 2),
+    propertyOrService: propertyOrService || 'Alojamiento Rural (Sober)',
+    specialRequests: specialRequests || 'Sin peticiones especiales',
+    status: 'pendiente_confirmar',
+    createdAt: new Date().toLocaleString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+  };
+  secretaryData.reservations.unshift(item);
+  secretaryData.stats.estimatedValueEur =
+    Number(secretaryData.stats.estimatedValueEur || 0) + 240;
+  upsertContactFromAction({
+    name: item.guestName,
+    phone: item.phone,
+    relation: 'Huésped / Reserva',
+    notes: `Reserva ${item.guestsCount} pers. (${item.checkIn} - ${item.checkOut})`,
+  });
+  appendTranscriptChunk(
+    'system',
+    `🏡 Reserva registrada: ${item.guestName} (${item.guestsCount} pers.) del ${item.checkIn} al ${item.checkOut}`
+  );
+  broadcastSecretaryUpdate(`Nueva solicitud de reserva de ${item.guestName}`);
+  sendTelegramNotification(
+    `🏡 <b>¡Nueva Solicitud de Reserva!</b>\n👤 <b>Huésped:</b> ${item.guestName}\n📞 <b>Tel:</b> ${item.phone}\n👥 <b>Personas:</b> ${item.guestsCount}\n📅 <b>Entrada:</b> ${item.checkIn}\n📅 <b>Salida:</b> ${item.checkOut}\n📝 <b>Notas:</b> ${item.specialRequests}`
+  );
+  return item;
+}
+
 function clearSimulationTimers() {
   for (const t of simulationTimers) clearTimeout(t);
   simulationTimers = [];
 }
 
-function buildSystemInstruction() {
-  return `Eres el asistente personal de filtrado de llamadas de ${appConfig.ownerName}.
-Tu objetivo es atender llamadas entrantes (la mayoría comerciales, ventas o desconocidos), averiguar rápidamente quién llama y qué quiere, y proteger el tiempo de ${appConfig.ownerName}.
+function buildSystemInstruction(callerMemory = null) {
+  const todayStr = new Date().toLocaleDateString('es-ES', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  const memoryBlock = callerMemory
+    ? `\nMEMORIA CRM DEL NÚMERO QUE LLAMA AHORA MISMO:\n${callerMemory.summaryText}\n- IMPORTANTE: Saluda a esta persona por su nombre (${callerMemory.callerName}) y haz referencia natural a lo que ya tenéis registrado con ella.\n`
+    : '';
 
-REGLAS DE COMPORTAMIENTO:
-1. Saluda siempre en español con tono educado, natural, profesional y directo: "Hola, buenas. Habla con el asistente personal de ${appConfig.ownerName}, en este momento está ocupado pero él está viendo esta conversación en pantalla. ¿De parte de quién llaman y cuál es el motivo de la llamada?"
-2. Haz preguntas breves y concretas (una a la vez):
-   - Nombre de la persona y empresa de la que llama.
-   - Qué ofrecen o necesitan exactamente (propuesta, condiciones o motivo concreto).
-3. En cuanto tengas cualquier dato sobre quién llama o qué busca, EJECUTA SIEMPRE la herramienta 'classify_call' en segundo plano para actualizar la ficha en la pantalla de ${appConfig.ownerName}. Puedes llamarla varias veces conforme averigües más detalles.
-4. Criterios personales de filtrado de ${appConfig.ownerName}:
+  return `Eres la secretaria personal y asistente ejecutiva de voz de ${appConfig.ownerName} en España (hoy es ${todayStr}).
+Tu misión NO es solo filtrar spam: eres la SECRETARIA PERSONAL COMPLETA de ${appConfig.ownerName}. Atiendes todas sus llamadas entrantes con máxima eficacia: coges recados, anotas citas en su calendario/agenda, compruebas disponibilidad en el calendario y gestionas solicitudes de reservas (tarifa actual: ${appConfig.nightlyRate || '120 €/noche'}), le pasas llamadas importantes a su móvil (${appConfig.personalPhoneNumber}) y, cuando llaman comercializadoras de luz o telefonía, comparas en directo con los datos reales de las facturas de ${appConfig.ownerName}.
+${memoryBlock}
+IDIOMA Y ACENTO OBLIGATORIO (ESPAÑOL DE ESPAÑA):
+- Habla SIEMPRE con acento español de España (castellano peninsular nativo de España, con distinción natural de 'z'/'c' y 's', entonación española peninsular y expresiones naturales de España como "móvil", "ordenador", "un segundo", "dígame", "le cojo el recado", "lo anoto en la agenda").
+- NUNCA uses acento latinoamericano ni neutro.
+
+FUNCIONES PRINCIPALES DE SECRETARIA (USA SIEMPRE LAS HERRAMIENTAS CORRESPONDIENTES):
+1. SALUDO INICIAL:
+   Saluda de forma natural, cercana y profesional (si conoces su nombre por la Memoria CRM, salúdale por su nombre).
+2. COGER RECADOS ('take_message'):
+   Si alguien llama para dejar un aviso, recado, consulta personal, gestión administrativa, banco, paquete o recado de trabajo, pregúntale su nombre, teléfono de contacto y el recado detallado, y EJECUTA 'take_message' para guardarlo en la bandeja de recados de ${appConfig.ownerName}.
+3. AGENDAR CITAS EN EL CALENDARIO ('schedule_appointment'):
+   Si alguien quiere concertar una cita, reunión, visita o llamada programada con ${appConfig.ownerName}, pregúntale qué día y a qué hora le viene bien, el asunto y su teléfono, y EJECUTA 'schedule_appointment' para dejarlo anotado en el calendario de ${appConfig.ownerName}.
+4. COMPROBAR DISPONIBILIDAD ('check_availability') Y GESTIONAR RESERVAS ('take_reservation'):
+   Si llaman preguntando por fechas libres o para hacer una reserva (por ejemplo, para el alojamiento rural en Sober / Peña da Osa), EJECUTA primero 'check_availability' para mirar si esas fechas están libres y confirmar la tarifa (${appConfig.nightlyRate || '120 €/noche'}), y cuando te den su nombre, teléfono, fechas y número de personas, EJECUTA 'take_reservation'.
+5. CLASIFICACIÓN EN TIEMPO REAL ('classify_call'):
+   En cuanto sepas quién llama y para qué, ejecuta 'classify_call' en segundo plano para actualizar la ficha en la pantalla de ${appConfig.ownerName}.
+6. COMPARACIÓN INTELIGENTE CON LAS FACTURAS DE LUZ Y MÓVIL DE ${appConfig.ownerName.toUpperCase()}:
+   Tienes acceso al contexto real de los contratos actuales de ${appConfig.ownerName}:
+   ${appConfig.contractsContext || DEFAULT_CONTRACTS_CONTEXT}
+   - Si llaman de una compañía eléctrica o de telecomunicaciones, NO cuelgues a ciegas sin preguntar ni aceptes eslóganes genéricos: pregúntales el precio exacto (€/kWh fijo en luz, o precio final IVA incluido para Fibra 1Gb + las 5 líneas móviles en telefonía).
+   - Compara su oferta con las facturas reales de ${appConfig.ownerName}. Si su oferta es peor o no mejora claramente lo que ya paga, explícalo con los números reales (sin dar nunca DNI, CUPS ni cuenta bancaria), despídete educadamente y ejecuta 'reject_and_hangup'.
+   - Si realmente mejoran sus condiciones actuales, toma nota en un recado ('take_message') o pídeles que lo envíen a ${appConfig.ownerEmail}.
+7. REGLAS ADICIONALES DE ${appConfig.ownerName.toUpperCase()}:
    ${appConfig.filterRules}
-5. Si detectas que es telemarketing genérico no deseado (cambio de compañía de luz/gas/fibra/seguros sin contacto previo), indícale amablemente que ${appConfig.ownerName} no está interesado en ofertas de ese tipo, despídete y usa 'reject_and_hangup'.
-6. Si la llamada parece interesante o importante según los criterios, pídele un segundo de espera mientras ${appConfig.ownerName} decide si toma la llamada en su móvil, o pídele un correo/teléfono de contacto (el correo de ${appConfig.ownerName} es ${appConfig.ownerEmail}).
-7. Si recibes un mensaje del sistema prefijado con [ORDEN EN VIVO DE ${appConfig.ownerName.toUpperCase()}], obedécelo de inmediato en tu siguiente respuesta hablada.`;
+8. ÓRDENES EN VIVO DEL PROPIETARIO:
+   Si recibes un mensaje prefijado con [ORDEN EN VIVO DE ${appConfig.ownerName.toUpperCase()}], obedécelo de inmediato en tu siguiente intervención hablada.`;
 }
 
 const GEMINI_TOOLS = [
@@ -307,42 +952,177 @@ const GEMINI_TOOLS = [
             },
             company: {
               type: 'STRING',
-              description: 'Empresa u organización desde la que llaman',
+              description: 'Empresa, entidad o relación (ej. Particular, Huésped, Gestoría, Comercial Luz)',
             },
             category: {
               type: 'STRING',
               description:
-                'Categoría: "Telemarketing / Spam", "Propuesta B2B", "Cliente / Proyecto", "Proveedor", "Urgente / Personal", o "Desconocido"',
+                'Categoría: "Reserva", "Cita / Agenda", "Recado / Aviso", "Suministros (Luz / Móvil)", "Cliente / Proyecto B2B", "Urgente / Personal", o "Telemarketing / Spam"',
             },
             summary: {
               type: 'STRING',
-              description: 'Resumen claro en 1 o 2 frases de lo que ofrecen o solicitan',
+              description: 'Resumen claro en 1 o 2 frases de lo que solicitan u ofrecen',
             },
             relevanceScore: {
               type: 'INTEGER',
               description:
-                'Puntuación de 1 a 10 según el interés que puede tener para el propietario (1=Spam total, 10=Muy importante)',
+                'Puntuación de 1 a 10 según la importancia para Fernando (1=Spam o tarifa peor, 8-10=Reserva, Cita, Recado importante u Oferta que ahorra dinero)',
             },
             recommendation: {
               type: 'STRING',
-              description:
-                'Recomendación corta: "Descartar / Spam", "Pedir info por email", o "¡Atender llamada! Parece interesante"',
+              description: 'Recomendación corta para Fernando en pantalla',
             },
           },
           required: ['company', 'category', 'summary', 'relevanceScore', 'recommendation'],
         },
       },
       {
+        name: 'check_availability',
+        description:
+          'Comprueba en tiempo real si unas fechas están libres en el calendario de reservas/citas y devuelve el precio por noche.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            checkIn: {
+              type: 'STRING',
+              description: 'Fecha de entrada consultada',
+            },
+            checkOut: {
+              type: 'STRING',
+              description: 'Fecha de salida consultada',
+            },
+            guestsCount: {
+              type: 'INTEGER',
+              description: 'Número de personas',
+            },
+          },
+          required: ['checkIn', 'checkOut'],
+        },
+      },
+      {
+        name: 'take_message',
+        description:
+          'Guarda un recado o mensaje detallado para Fernando en su bandeja de Recados.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            callerName: {
+              type: 'STRING',
+              description: 'Nombre de quien deja el recado',
+            },
+            phone: {
+              type: 'STRING',
+              description: 'Teléfono de contacto para devolver la llamada',
+            },
+            subject: {
+              type: 'STRING',
+              description: 'Asunto breve del recado',
+            },
+            message: {
+              type: 'STRING',
+              description: 'Contenido completo del recado o mensaje para Fernando',
+            },
+            urgency: {
+              type: 'STRING',
+              description: 'Nivel de urgencia: "alta", "normal" o "baja"',
+            },
+          },
+          required: ['callerName', 'subject', 'message'],
+        },
+      },
+      {
+        name: 'schedule_appointment',
+        description:
+          'Anota una cita, reunión, visita o llamada programada en la Agenda / Calendario de Fernando.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            title: {
+              type: 'STRING',
+              description: 'Título o motivo de la cita',
+            },
+            withPerson: {
+              type: 'STRING',
+              description: 'Nombre de la persona o entidad con quien es la cita',
+            },
+            phone: {
+              type: 'STRING',
+              description: 'Teléfono de contacto',
+            },
+            date: {
+              type: 'STRING',
+              description: 'Fecha de la cita (ej. "Jueves 19/11/2026" o "Mañana")',
+            },
+            time: {
+              type: 'STRING',
+              description: 'Hora de la cita (ej. "11:30")',
+            },
+            locationOrChannel: {
+              type: 'STRING',
+              description: 'Lugar o modalidad (ej. "Presencial en Sober", "Llamada telefónica", "Videollamada")',
+            },
+            notes: {
+              type: 'STRING',
+              description: 'Detalles o documentos a preparar para la cita',
+            },
+          },
+          required: ['title', 'withPerson', 'date', 'time'],
+        },
+      },
+      {
+        name: 'take_reservation',
+        description:
+          'Registra una solicitud de reserva (alojamiento rural, estancia o servicio) con fechas y número de personas.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            guestName: {
+              type: 'STRING',
+              description: 'Nombre completo del cliente o huésped que reserva',
+            },
+            phone: {
+              type: 'STRING',
+              description: 'Teléfono de contacto del cliente',
+            },
+            checkIn: {
+              type: 'STRING',
+              description: 'Fecha de entrada o inicio de la reserva',
+            },
+            checkOut: {
+              type: 'STRING',
+              description: 'Fecha de salida o fin de la reserva',
+            },
+            guestsCount: {
+              type: 'INTEGER',
+              description: 'Número total de personas / huéspedes',
+            },
+            propertyOrService: {
+              type: 'STRING',
+              description: 'Alojamiento o servicio solicitado (ej. "Casa Rural Peña da Osa - Sober")',
+            },
+            specialRequests: {
+              type: 'STRING',
+              description: 'Peticiones especiales, mascotas, horarios de llegada o dudas',
+            },
+          },
+          required: ['guestName', 'checkIn', 'checkOut', 'guestsCount'],
+        },
+      },
+      {
         name: 'reject_and_hangup',
         description:
-          'Marca la llamada como descartada cuando se confirma que es spam o telemarketing no deseado.',
+          'Marca la llamada como descartada cuando se confirma que es spam o una oferta que no mejora las facturas actuales de Fernando.',
         behavior: 'NON_BLOCKING',
         parameters: {
           type: 'OBJECT',
           properties: {
             reason: {
               type: 'STRING',
-              description: 'Motivo del rechazo de la llamada',
+              description: 'Motivo del rechazo (ej. "Oferta luz a 0,16€/kWh más cara que Repsol 0,136€/kWh")',
             },
           },
           required: ['reason'],
@@ -355,7 +1135,15 @@ const GEMINI_TOOLS = [
 // ============================================================================
 // Gemini 3.8 Live Session Manager (Raw WebSocket to Gemini Live API)
 // ============================================================================
-function createGeminiLiveSession({ onAudioChunk, onTranscript, onClassification, onInterrupted, onError, onClose }) {
+function createGeminiLiveSession({
+  callerMemory,
+  onAudioChunk,
+  onTranscript,
+  onClassification,
+  onInterrupted,
+  onError,
+  onClose,
+}) {
   const apiKey = appConfig.geminiApiKey;
   if (!apiKey) {
     throw new Error('Falta configurar GEMINI_API_KEY en el panel de Ajustes.');
@@ -375,6 +1163,7 @@ function createGeminiLiveSession({ onAudioChunk, onTranscript, onClassification,
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: {
+            languageCode: 'es-ES',
             voiceConfig: {
               prebuiltVoiceConfig: {
                 voiceName: appConfig.voiceName || 'Aoede',
@@ -383,7 +1172,7 @@ function createGeminiLiveSession({ onAudioChunk, onTranscript, onClassification,
           },
         },
         systemInstruction: {
-          parts: [{ text: buildSystemInstruction() }],
+          parts: [{ text: buildSystemInstruction(callerMemory) }],
         },
         inputAudioTranscription: {},
         outputAudioTranscription: {},
@@ -410,18 +1199,16 @@ function createGeminiLiveSession({ onAudioChunk, onTranscript, onClassification,
 
       if (msg.setupComplete !== undefined && !isSetupComplete) {
         isSetupComplete = true;
-        // Trigger initial greeting from the assistant
+        const greetingHint = callerMemory?.callerName
+          ? `[SISTEMA: Acaba de entrar la llamada de un contacto conocido (${callerMemory.callerName}). Habla con acento español de España (castellano peninsular). Salúdale por su nombre y menciona que recuerdas su contacto o gestión anterior.]`
+          : `[SISTEMA: Acaba de entrar la llamada y han descolgado. Habla con acento español de España (castellano peninsular nativo). Saluda ahora mismo como secretaria personal de ${appConfig.ownerName} y pregunta de parte de quién llaman y en qué puedes ayudarle.]`;
         geminiWs.send(
           JSON.stringify({
             clientContent: {
               turns: [
                 {
                   role: 'user',
-                  parts: [
-                    {
-                      text: '[SISTEMA: Acaba de entrar la llamada y han descolgado. Saluda ahora mismo al interlocutor y pregúntale de parte de quién llama y el motivo.]',
-                    },
-                  ],
+                  parts: [{ text: greetingHint }],
                 },
               ],
               turnComplete: true,
@@ -432,7 +1219,6 @@ function createGeminiLiveSession({ onAudioChunk, onTranscript, onClassification,
 
       const content = msg.serverContent;
       if (content) {
-        // Process ALL parts in modelTurn
         if (content.modelTurn?.parts) {
           for (const part of content.modelTurn.parts) {
             if (part.inlineData?.data) {
@@ -441,17 +1227,14 @@ function createGeminiLiveSession({ onAudioChunk, onTranscript, onClassification,
           }
         }
 
-        // Caller transcription
         if (content.inputTranscription?.text) {
           onTranscript?.('caller', content.inputTranscription.text);
         }
 
-        // Assistant transcription
         if (content.outputTranscription?.text) {
           onTranscript?.('assistant', content.outputTranscription.text);
         }
 
-        // Barge-in / Interruption
         if (content.interrupted) {
           onInterrupted?.();
         }
@@ -469,9 +1252,63 @@ function createGeminiLiveSession({ onAudioChunk, onTranscript, onClassification,
               name: call.name,
               response: { status: 'updated_on_owner_screen' },
             });
-          } else if (call.name === 'reject_and_hangup') {
+          } else if (call.name === 'check_availability') {
+            const availResult = checkCalendarAvailability(args);
+            functionResponses.push({
+              id: call.id,
+              name: call.name,
+              response: availResult,
+            });
+          } else if (call.name === 'take_message') {
+            const saved = addMessageRecord(args);
             onClassification?.({
-              recommendation: `Rechazada: ${args.reason || 'Telemarketing no deseado'}`,
+              callerName: saved.callerName,
+              category: 'Recado / Aviso',
+              summary: `Recado (${saved.subject}): ${saved.message}`,
+              relevanceScore: saved.urgency === 'alta' ? 9 : 7,
+              recommendation: '📝 Recado guardado en tu bandeja de Secretaria',
+            });
+            functionResponses.push({
+              id: call.id,
+              name: call.name,
+              response: { status: 'message_saved', id: saved.id },
+            });
+          } else if (call.name === 'schedule_appointment') {
+            const saved = addAppointmentRecord(args);
+            onClassification?.({
+              callerName: saved.withPerson,
+              category: 'Cita / Agenda',
+              summary: `Cita: ${saved.title} el ${saved.date} a las ${saved.time}`,
+              relevanceScore: 9,
+              recommendation: `📅 Cita anotada en tu Agenda (${saved.date} - ${saved.time})`,
+            });
+            functionResponses.push({
+              id: call.id,
+              name: call.name,
+              response: { status: 'appointment_scheduled', id: saved.id },
+            });
+          } else if (call.name === 'take_reservation') {
+            const saved = addReservationRecord(args);
+            onClassification?.({
+              callerName: saved.guestName,
+              company: saved.propertyOrService,
+              category: 'Reserva',
+              summary: `Reserva para ${saved.guestsCount} personas (${saved.checkIn} a ${saved.checkOut}). ${saved.specialRequests}`,
+              relevanceScore: 10,
+              recommendation: '🏡 ¡Nueva Reserva registrada! Revisa la pestaña Reservas o desvía a tu móvil',
+            });
+            functionResponses.push({
+              id: call.id,
+              name: call.name,
+              response: { status: 'reservation_saved', id: saved.id },
+            });
+          } else if (call.name === 'reject_and_hangup') {
+            secretaryData.stats.spamBlocked = Number(secretaryData.stats.spamBlocked || 0) + 1;
+            secretaryData.stats.timeSavedMinutes =
+              Number(secretaryData.stats.timeSavedMinutes || 0) + 4;
+            saveSecretaryData();
+            onClassification?.({
+              recommendation: `Rechazada: ${args.reason || 'No mejora tus condiciones actuales'}`,
               relevanceScore: 1,
             });
             functionResponses.push({
@@ -548,16 +1385,29 @@ function createGeminiLiveSession({ onAudioChunk, onTranscript, onClassification,
 // ============================================================================
 // Twilio Live Call Redirect (Hot Transfer to Personal Mobile Phone)
 // ============================================================================
+function normalizeSpanishE164(phone) {
+  const clean = String(phone || '').replace(/[\s\-().]/g, '');
+  if (!clean) return '';
+  if (clean.startsWith('+')) return clean;
+  if (clean.startsWith('00')) return '+' + clean.slice(2);
+  if (/^[6789]\d{8}$/.test(clean)) return '+34' + clean;
+  return clean;
+}
+
 async function redirectTwilioCallToMobile(callSid, targetPhoneNumber) {
-  const { twilioAccountSid, twilioAuthToken } = appConfig;
-  if (!twilioAccountSid || !twilioAuthToken || !callSid) {
+  const { twilioAccountSid, twilioAuthToken, twilioPhoneNumber } = appConfig;
+  const e164Target = normalizeSpanishE164(targetPhoneNumber || appConfig.personalPhoneNumber);
+  const e164Twilio = normalizeSpanishE164(twilioPhoneNumber);
+
+  if (!twilioAccountSid || !twilioAuthToken || !callSid || String(callSid).startsWith('SIM_') || String(callSid).startsWith('WEB_')) {
     return {
       simulated: true,
-      message: `Desvío ejecutado hacia ${targetPhoneNumber} (Modo local/simulado: configura TWILIO_ACCOUNT_SID y TWILIO_AUTH_TOKEN para desvíos reales en red telefónica).`,
+      message: `Desvío ejecutado hacia el móvil ${e164Target} de ${appConfig.ownerName}. (En llamada telefónica real con Twilio sonará tu móvil al instante).`,
     };
   }
 
-  const twiml = `<Response><Say language="es-ES">Perfecto, le paso ahora mismo con ${appConfig.ownerName}. Un segundo.</Say><Dial>${targetPhoneNumber}</Dial></Response>`;
+  const callerIdAttr = e164Twilio ? ` callerId="${e164Twilio}"` : '';
+  const twiml = `<Response><Say language="es-ES">Perfecto, le paso ahora mismo con ${appConfig.ownerName}. No cuelgue, por favor.</Say><Dial timeout="25"${callerIdAttr}>${e164Target}</Dial></Response>`;
   const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(
     twilioAccountSid
   )}/Calls/${encodeURIComponent(callSid)}.json`;
@@ -593,20 +1443,29 @@ function startNewCallState({ source, fromNumber, callSid }) {
   if (activeCall?.geminiSession) {
     activeCall.geminiSession.close();
   }
+  const callerMemory = getCallerMemoryContext(fromNumber);
+
   activeCall = {
     id: 'call_' + Date.now(),
     callSid: callSid || null,
     source: source || 'web', // 'twilio' | 'web-mic' | 'simulation'
-    fromNumber: fromNumber || '+34 910 55 42 18',
+    fromNumber: fromNumber || '+34 982 10 24 50',
     startedAt: new Date().toISOString(),
     status: 'screening', // 'screening' | 'transferred' | 'taken_over_web' | 'ended'
+    callerMemory,
     classification: {
-      callerName: 'Identificando...',
-      company: 'Analizando interlocutor...',
-      category: 'Filtrando...',
-      summary: 'El asistente está preguntando quién llama y el motivo de la llamada.',
-      relevanceScore: 5,
-      recommendation: 'Esperando respuesta del interlocutor...',
+      callerName: callerMemory?.callerName
+        ? `${callerMemory.callerName}${callerMemory.vip ? ' 🌟' : ''}`
+        : 'Identificando...',
+      company: callerMemory?.relation || 'Atendiendo llamada...',
+      category: callerMemory ? 'Contacto Reconocido' : 'Secretaria en línea',
+      summary: callerMemory
+        ? `Memoria CRM activada: ${callerMemory.summaryText}`
+        : 'Tu secretaria está preguntando de parte de quién llaman y qué necesitan.',
+      relevanceScore: callerMemory?.vip ? 9 : 5,
+      recommendation: callerMemory
+        ? '🧠 Contacto reconocido automáticamente en tu agenda'
+        : 'Escuchando motivo de la llamada...',
     },
     transcript: [],
     currentBuffer: { caller: '', assistant: '' },
@@ -614,6 +1473,13 @@ function startNewCallState({ source, fromNumber, callSid }) {
     twilioWs: null,
     twilioStreamSid: null,
   };
+
+  if (callerMemory) {
+    appendTranscriptChunk(
+      'system',
+      `🧠 Memoria CRM detectó a ${callerMemory.callerName} (${fromNumber})`
+    );
+  }
 
   broadcastToDashboard({
     type: 'call_started',
@@ -688,127 +1554,357 @@ function endActiveCall(reason = 'Llamada finalizada') {
     activeCall.twilioWs = null;
   }
   const snapshot = serializeCall(activeCall);
-  callHistory.unshift(snapshot);
-  if (callHistory.length > 20) callHistory.pop();
+  secretaryData.history.unshift(snapshot);
+  if (secretaryData.history.length > 30) secretaryData.history.pop();
+  saveSecretaryData();
 
   broadcastToDashboard({
     type: 'call_ended',
     call: snapshot,
     reason,
-    history: callHistory,
+    history: secretaryData.history,
   });
 }
 
 // ============================================================================
-// Interactive Commercial Call Scenarios (For instant testing without phone)
+// Gemini TTS Voice Synthesizer + Interactive Secretary & Invoice Scenarios
 // ============================================================================
-const SIMULATION_SCENARIOS = {
-  b2b_opportunity: {
-    fromNumber: '+34 919 03 84 21',
-    steps: [
-      {
-        delay: 600,
-        role: 'assistant',
-        text: `Hola, buenas. Habla con el asistente personal de ${appConfig.ownerName}; ahora mismo está ocupado pero ve esta transcripción en directo. ¿De parte de quién llaman y cuál es el motivo?`,
-      },
-      {
-        delay: 3200,
-        role: 'caller',
-        text: 'Hola, qué tal. Soy Laura Méndez, directora de operaciones en Grupo Logístico Iberia. Quería hablar con él porque necesitamos contratar un proveedor externo para automatizar nuestros procesos este trimestre.',
-      },
-      {
-        delay: 4200,
-        classification: {
-          callerName: 'Laura Méndez (Dir. Operaciones)',
-          company: 'Grupo Logístico Iberia',
-          category: 'Cliente / Proyecto B2B',
-          summary:
-            'Buscan contratar proveedor externo este trimestre para automatizar procesos operativos.',
-          relevanceScore: 9,
-          recommendation: '¡Atender llamada! Oportunidad comercial de alto valor',
-        },
-      },
-      {
-        delay: 5000,
-        role: 'assistant',
-        text: 'Encantada, Laura. Suena muy interesante. ¿Tienen ya definido un presupuesto o alcance aproximado para comentárselo ahora mismo en pantalla?',
-      },
-      {
-        delay: 8200,
-        role: 'caller',
-        text: 'Sí, tenemos una partida aprobada de unos 18.000 euros para arrancar el piloto este mismo mes y queríamos saber si tiene disponibilidad para verlo hoy.',
-      },
-      {
-        delay: 9000,
-        classification: {
-          callerName: 'Laura Méndez (Dir. Operaciones)',
-          company: 'Grupo Logístico Iberia',
-          category: 'Cliente / Proyecto B2B',
-          summary:
-            'Proyecto de automatización con presupuesto aprobado de 18.000€ para arrancar piloto este mes.',
-          relevanceScore: 10,
-          recommendation: '🔥 ¡Desviar a tu móvil ahora! Cliente con presupuesto aprobado (18.000€)',
-        },
-      },
-      {
-        delay: 10200,
-        role: 'assistant',
-        text: `Perfecto, Laura. Le estoy pasando la alerta en pantalla a ${appConfig.ownerName} por si puede tomar la llamada en su móvil ahora mismo. Un segundo, por favor.`,
-      },
-    ],
-  },
-  spam_energy: {
-    fromNumber: '+34 911 88 00 92',
-    steps: [
-      {
-        delay: 600,
-        role: 'assistant',
-        text: `Hola, buenas. Habla con el asistente personal de ${appConfig.ownerName}. En este momento no puede ponerse, ¿de qué empresa llaman y qué necesitan?`,
-      },
-      {
-        delay: 3000,
-        role: 'caller',
-        text: 'Buenas tardes, le llamo del departamento de descuentos energéticos para informarle de un cambio obligatorio en su factura de luz con un 20% de descuento.',
-      },
-      {
-        delay: 3800,
-        classification: {
-          callerName: 'Agente Comercial No Identificado',
-          company: 'Telemarketing Energético',
-          category: 'Telemarketing / Spam',
-          summary: 'Llamada fría comercial ofreciendo cambio de tarifa de luz con supuesto descuento.',
-          relevanceScore: 1,
-          recommendation: '🚫 Descartar / Spam energético detectado',
-        },
-      },
-      {
-        delay: 5000,
-        role: 'assistant',
-        text: `Muchas gracias, pero ${appConfig.ownerName} tiene bloqueadas todas las ofertas comerciales de suministros de luz, gas y telefonía. No estamos interesados, que tenga buen día.`,
-      },
-    ],
-  },
-};
+const ttsCache = new Map();
 
-function runSimulatedCall(scenarioKey = 'b2b_opportunity') {
-  const scenario = SIMULATION_SCENARIOS[scenarioKey] || SIMULATION_SCENARIOS.b2b_opportunity;
-  startNewCallState({
+async function synthesizeSpeechPcm24k(text, voiceName = 'Aoede') {
+  const apiKey = appConfig.geminiApiKey;
+  if (!apiKey || !text) return null;
+
+  const cacheKey = `es-ES::${voiceName}::${text}`;
+  if (ttsCache.has(cacheKey)) {
+    return ttsCache.get(cacheKey);
+  }
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${encodeURIComponent(
+      apiKey
+    )}`;
+    const ttsPrompt = `Pronuncia con acento español de España (castellano peninsular nativo de Madrid, con ceceo/distinción de z y c española y entonación natural de España): ${text}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: ttsPrompt }] }],
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            languageCode: 'es-ES',
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName,
+              },
+            },
+          },
+        },
+      }),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    const part = data.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+    if (!part?.data) return null;
+
+    const byteLength = Buffer.from(part.data, 'base64').length;
+    const durationMs = Math.max(1200, Math.round((byteLength / 2 / 24000) * 1000));
+    const result = { base64Pcm24k: part.data, durationMs };
+    ttsCache.set(cacheKey, result);
+    return result;
+  } catch (err) {
+    console.error('Error sintetizando voz TTS:', err.message);
+    return null;
+  }
+}
+
+async function speakAndAppendTranscript(role, text, voiceName) {
+  const tts = await synthesizeSpeechPcm24k(text, voiceName);
+  if (!activeCall) return 2000;
+  appendTranscriptChunk(role, text);
+  if (tts?.base64Pcm24k) {
+    broadcastToDashboard({
+      type: 'call_audio',
+      role,
+      data: tts.base64Pcm24k,
+    });
+    return tts.durationMs;
+  } else {
+    broadcastToDashboard({
+      type: 'speak_fallback',
+      role,
+      text,
+    });
+    return Math.max(2500, text.length * 62);
+  }
+}
+
+function getSimulationScenarios() {
+  const owner = appConfig.ownerName || 'Fernando';
+  return {
+    reservation_request: {
+      fromNumber: '+34 648 92 15 30',
+      callerVoice: 'Puck',
+      steps: [
+        {
+          role: 'assistant',
+          text: `Hola, buenas. Habla con la secretaria personal de ${owner}; en este momento no se puede poner pero le atiendo yo. ¿De parte de quién llaman y en qué le puedo ayudar?`,
+        },
+        {
+          role: 'caller',
+          text: 'Hola, buenos días. Soy Martín Vázquez. Llamaba porque queremos hacer una reserva en el alojamiento rural de Sober para cuatro personas, entrando el viernes 20 de noviembre y saliendo el domingo 22.',
+          classification: {
+            callerName: 'Martín Vázquez',
+            company: 'Reserva Alojamiento Rural (Sober)',
+            category: 'Reserva',
+            summary: 'Solicitud de reserva para 4 personas del viernes 20/11 al domingo 22/11.',
+            relevanceScore: 10,
+            recommendation: '🏡 ¡Reserva entrante! Comprobando disponibilidad en calendario...',
+          },
+          onAction() {
+            checkCalendarAvailability({
+              checkIn: 'Viernes 20/11/2026',
+              checkOut: 'Domingo 22/11/2026',
+              guestsCount: 4,
+            });
+          },
+        },
+        {
+          role: 'assistant',
+          text: `¡Estupendo, Martín! Acabo de comprobar el calendario en tiempo real y del viernes 20 al domingo 22 de noviembre está libre para cuatro personas, a ${appConfig.nightlyRate || '120 euros la noche'}. ¿Necesitan algo especial?`,
+        },
+        {
+          role: 'caller',
+          text: 'Genial. El teléfono es este mismo, 648 92 15 30. Solo queríamos saber si podemos llegar el viernes sobre las ocho de la tarde y si admitís un perro pequeño.',
+          onAction() {
+            addReservationRecord({
+              guestName: 'Martín Vázquez',
+              phone: '+34 648 92 15 30',
+              checkIn: 'Viernes 20/11/2026',
+              checkOut: 'Domingo 22/11/2026',
+              guestsCount: 4,
+              propertyOrService: 'Alojamiento Rural en Sober',
+              specialRequests: 'Llegada viernes a las 20:00h. Viajan con perro pequeño.',
+            });
+          },
+          classification: {
+            callerName: 'Martín Vázquez',
+            company: 'Reserva Alojamiento Rural (Sober)',
+            category: 'Reserva',
+            summary: 'Reserva 4 personas (20/11 al 22/11). Llegada 20:00h, viajan con perro pequeño.',
+            relevanceScore: 10,
+            recommendation: '🏡 Reserva guardada + Alerta enviada a tu Telegram (@fraypericobot)',
+          },
+        },
+        {
+          role: 'assistant',
+          text: `Perfecto, Martín. Ya he dejado registrada su reserva del 20 al 22 de noviembre y le acabo de mandar el aviso al móvil a ${owner} para que le confirme por WhatsApp.`,
+        },
+      ],
+    },
+    appointment_message: {
+      fromNumber: '+34 982 45 11 08',
+      callerVoice: 'Kore',
+      steps: [
+        {
+          role: 'assistant',
+          text: `Hola, Elena. Veo en la agenda que llamas de la asesoría fiscal de Monforte. ${owner} está ocupado ahora mismo, ¿qué necesitas que le anote?`,
+        },
+        {
+          role: 'caller',
+          text: 'Hola, qué bien que me reconozcas. Llamaba para agendar una cita con Fernando este jueves a las once y media de la mañana para cerrar el trimestre, y dejarle el recado de que nos traiga las facturas de suministros.',
+          classification: {
+            callerName: 'Elena Castro 🌟',
+            company: 'Asesoría Fiscal Monforte (VIP)',
+            category: 'Cita / Agenda',
+            summary: 'Contacto VIP reconocido. Quiere cita este jueves a las 11:30h y recado sobre facturas.',
+            relevanceScore: 9,
+            recommendation: '📅 Anotando cita en Calendario y enviando alerta a tu Telegram',
+          },
+        },
+        {
+          role: 'assistant',
+          text: `Perfecto, Elena. Le anoto ahora mismo la cita en el calendario a ${owner} para este jueves a las once y media de la mañana y le dejo el recado urgente de llevar las facturas de Repsol y Yoigo.`,
+          onAction() {
+            addAppointmentRecord({
+              title: 'Revisión trimestral e impuestos',
+              withPerson: 'Elena Castro (Asesoría Fiscal)',
+              phone: '+34 982 45 11 08',
+              date: 'Jueves 19/11/2026',
+              time: '11:30',
+              locationOrChannel: 'Despacho Asesoría (Monforte)',
+              notes: 'Llevar facturas de suministros (Repsol, Yoigo) y proveedores.',
+            });
+            addMessageRecord({
+              callerName: 'Elena Castro (Asesoría)',
+              phone: '+34 982 45 11 08',
+              subject: 'Documentación para cita del jueves',
+              message: 'Llevar preparadas las facturas de luz (Repsol) y teléfono (Yoigo) para la cita del jueves a las 11:30h.',
+              urgency: 'alta',
+            });
+          },
+        },
+      ],
+    },
+    energy_comparison: {
+      fromNumber: '+34 911 88 00 92',
+      callerVoice: 'Charon',
+      steps: [
+        {
+          role: 'assistant',
+          text: `Hola, buenas. Habla con la secretaria personal de ${owner}. ¿De qué empresa llaman y cuál es el motivo?`,
+        },
+        {
+          role: 'caller',
+          text: 'Buenas tardes, llamo de Comercializadora Eléctrica Nacional para aplicarle a Fernando una tarifa especial fija de luz a 0,162 euros el kilovatio hora.',
+          classification: {
+            callerName: 'Comercial Eléctrico',
+            company: 'Comercializadora Eléctrica Nacional',
+            category: 'Suministros (Luz / Móvil)',
+            summary: 'Ofrecen tarifa fija de luz a 0,162 €/kWh (más cara que tu factura actual de Repsol a 0,1361 €/kWh).',
+            relevanceScore: 2,
+            recommendation: '💡 Rechazar: Pagas 0,1361 €/kWh en Repsol (su oferta de 0,162 €/kWh es un 19% más cara)',
+          },
+        },
+        {
+          role: 'assistant',
+          text: `Un momento, tengo delante los datos de la factura de luz de ${owner} en Sober: actualmente tiene contratados 5,75 kilovatios y paga el kilovatio hora fijo las 24 horas a 0,136 euros con Repsol, con una factura total de 48 euros. A 0,162 euros le saldría más caro. Si no podéis bajar de 0,120 euros el kilovatio hora sin permanencia, no nos interesa. Muchas gracias y buen día.`,
+          onAction() {
+            secretaryData.stats.spamBlocked = Number(secretaryData.stats.spamBlocked || 0) + 1;
+            secretaryData.stats.timeSavedMinutes =
+              Number(secretaryData.stats.timeSavedMinutes || 0) + 4;
+            broadcastSecretaryUpdate();
+          },
+        },
+      ],
+    },
+    telco_comparison: {
+      fromNumber: '+34 910 60 33 14',
+      callerVoice: 'Puck',
+      steps: [
+        {
+          role: 'assistant',
+          text: `Hola, buenas. Habla con la secretaria de ${owner}. ¿De parte de quién llaman?`,
+        },
+        {
+          role: 'caller',
+          text: 'Hola, llamo del departamento de empresas de FibraPlus. Queríamos ofrecerle a Fernando fibra de 1 Giga más dos líneas móviles ilimitadas por 92 euros al mes.',
+          classification: {
+            callerName: 'Asesor FibraPlus',
+            company: 'Operadora FibraPlus',
+            category: 'Suministros (Luz / Móvil)',
+            summary: 'Ofrecen Fibra 1Gb + solo 2 líneas móviles por 92€/mes. En Yoigo tienes Fibra 1Gb + TV + 5 líneas por 112€/mes.',
+            relevanceScore: 2,
+            recommendation: '📱 No compensa: En Yoigo tienes 5 líneas móviles + Fibra 1Gb + TV por 112€/mes y terminales financiados',
+          },
+        },
+        {
+          role: 'assistant',
+          text: `Le comento: ahora mismo ${owner} tiene en Yoigo Fibra de 1 Giga, televisión y cinco líneas móviles en total, la principal con gigas ilimitados, por 112 euros al mes IVA incluido, además de dos dispositivos financiados en curso. Su oferta de 92 euros solo incluye dos líneas móviles, así que perdería tres líneas. Salvo que incluyan las cinco líneas y la fibra por menos de 85 euros al mes, no le compensa el cambio. Gracias igualmente.`,
+          onAction() {
+            secretaryData.stats.spamBlocked = Number(secretaryData.stats.spamBlocked || 0) + 1;
+            secretaryData.stats.timeSavedMinutes =
+              Number(secretaryData.stats.timeSavedMinutes || 0) + 4;
+            broadcastSecretaryUpdate();
+          },
+        },
+      ],
+    },
+    b2b_opportunity: {
+      fromNumber: '+34 919 03 84 21',
+      callerVoice: 'Kore',
+      steps: [
+        {
+          role: 'assistant',
+          text: `Hola, buenas. Habla con la secretaria personal de ${owner}; ahora mismo está ocupado pero ve esta transcripción en directo. ¿De parte de quién llaman y cuál es el motivo?`,
+        },
+        {
+          role: 'caller',
+          text: 'Hola, qué tal. Soy Laura Méndez, directora de operaciones en Grupo Logístico Iberia. Quería hablar con Fernando porque necesitamos contratar un proveedor externo este trimestre con un presupuesto aprobado de 18.000 euros.',
+          classification: {
+            callerName: 'Laura Méndez (Dir. Operaciones)',
+            company: 'Grupo Logístico Iberia',
+            category: 'Cliente / Proyecto B2B',
+            summary:
+              'Proyecto B2B con presupuesto aprobado de 18.000€ para arrancar este mismo mes.',
+            relevanceScore: 10,
+            recommendation: '🔥 ¡Desviar a tu móvil (639403998) ahora! Cliente con presupuesto de 18.000€',
+          },
+        },
+        {
+          role: 'assistant',
+          text: `Perfecto, Laura. Le estoy pasando el aviso prioritario en pantalla a ${owner} por si puede atenderla en su móvil ahora mismo, y le dejo también anotado el recado. Un segundo, por favor.`,
+          onAction() {
+            addMessageRecord({
+              callerName: 'Laura Méndez (Grupo Logístico Iberia)',
+              phone: '+34 919 03 84 21',
+              subject: 'Propuesta Proyecto B2B (18.000 €)',
+              message: 'Directora de Operaciones busca cerrar piloto de automatización este mes con partida aprobada de 18.000€.',
+              urgency: 'alta',
+            });
+          },
+        },
+      ],
+    },
+  };
+}
+
+async function runSimulatedCall(scenarioKey = 'reservation_request') {
+  const scenarios = getSimulationScenarios();
+  const scenario = scenarios[scenarioKey] || scenarios.reservation_request;
+  const call = startNewCallState({
     source: 'simulation',
     fromNumber: scenario.fromNumber,
     callSid: 'SIM_' + Date.now(),
   });
+  const callId = call.id;
+  const assistantVoice = appConfig.voiceName || 'Aoede';
+  const callerVoice = scenario.callerVoice || 'Charon';
 
-  for (const step of scenario.steps) {
-    const timer = setTimeout(() => {
-      if (!activeCall || activeCall.status !== 'screening') return;
-      if (step.role && step.text) {
-        appendTranscriptChunk(step.role, step.text);
+  const ttsPromises = scenario.steps.map((step) =>
+    synthesizeSpeechPcm24k(step.text, step.role === 'assistant' ? assistantVoice : callerVoice)
+  );
+
+  for (let i = 0; i < scenario.steps.length; i++) {
+    const step = scenario.steps[i];
+    const tts = await ttsPromises[i];
+    if (!activeCall || activeCall.id !== callId || activeCall.status !== 'screening') return;
+
+    appendTranscriptChunk(step.role, step.text);
+    if (step.classification) {
+      updateCallClassification(step.classification);
+    }
+    if (typeof step.onAction === 'function') {
+      try {
+        step.onAction();
+      } catch (e) {
+        console.error('Error en onAction de simulación:', e);
       }
-      if (step.classification) {
-        updateCallClassification(step.classification);
-      }
-    }, step.delay);
-    simulationTimers.push(timer);
+    }
+
+    let waitMs = 2500;
+    if (tts?.base64Pcm24k) {
+      broadcastToDashboard({
+        type: 'call_audio',
+        role: step.role,
+        data: tts.base64Pcm24k,
+      });
+      waitMs = tts.durationMs + 450;
+    } else {
+      broadcastToDashboard({
+        type: 'speak_fallback',
+        role: step.role,
+        text: step.text,
+      });
+      waitMs = Math.max(2600, step.text.length * 62);
+    }
+
+    await new Promise((resolve) => {
+      const t = setTimeout(resolve, waitMs);
+      simulationTimers.push(t);
+    });
   }
 }
 
@@ -836,7 +1932,7 @@ const server = http.createServer(async (req, res) => {
   const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = urlObj.pathname;
 
-  // --- API: Get Current Config & State ---
+  // --- API: Get Current Config, Secretary Records & State ---
   if (pathname === '/api/state' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(
@@ -845,11 +1941,163 @@ const server = http.createServer(async (req, res) => {
           ...appConfig,
           hasApiKey: Boolean(appConfig.geminiApiKey),
           hasTwilio: Boolean(appConfig.twilioAccountSid && appConfig.twilioAuthToken),
+          hasTelegram: Boolean(appConfig.telegramBotToken && appConfig.telegramChatId),
         },
+        templates: BUSINESS_TEMPLATES,
         activeCall: serializeCall(activeCall),
-        history: callHistory,
+        secretaryData,
+        history: secretaryData.history,
       })
     );
+    return;
+  }
+
+  // --- API: Upload & Analyze Invoice (PDF / Image) with Gemini Vision ---
+  if (pathname === '/api/invoices/analyze' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const invoice = await analyzeInvoiceWithGemini(body);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          ok: true,
+          invoice,
+          secretaryData,
+          contractsContext: appConfig.contractsContext,
+        })
+      );
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  // --- API: Test Telegram Notification ---
+  if (pathname === '/api/telegram/test' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      if (body.telegramBotToken) appConfig.telegramBotToken = body.telegramBotToken;
+      if (body.telegramChatId) appConfig.telegramChatId = body.telegramChatId;
+      saveConfig();
+      const result = await sendTelegramNotification(
+        `👩‍💼 <b>Secretaria IA de ${appConfig.ownerName} Conectada</b>\n✅ Recibirás aquí en tiempo real las reservas, citas, recados urgentes y podrás responder con órdenes o enviar <code>/desviar</code> para pasarte una llamada activa a tu móvil (${appConfig.personalPhoneNumber}).`,
+        true
+      );
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  // --- API: Apply SaaS Business Template ---
+  if (pathname === '/api/template/apply' && req.method === 'POST') {
+    try {
+      const { templateKey } = await readJsonBody(req);
+      const tpl = BUSINESS_TEMPLATES[templateKey];
+      if (!tpl) throw new Error('Plantilla no encontrada');
+      appConfig.businessTemplate = templateKey;
+      appConfig.filterRules = tpl.filterRules;
+      appConfig.nightlyRate = tpl.nightlyRate;
+      saveConfig();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          ok: true,
+          config: {
+            ...appConfig,
+            hasApiKey: Boolean(appConfig.geminiApiKey),
+            hasTwilio: Boolean(appConfig.twilioAccountSid && appConfig.twilioAuthToken),
+            hasTelegram: Boolean(appConfig.telegramBotToken && appConfig.telegramChatId),
+          },
+        })
+      );
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  // --- API: Manage Secretary Items (Add, Toggle Status, Delete) ---
+  if (pathname === '/api/secretary/item/add' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const { collection, item } = body;
+      if (collection === 'messages') addMessageRecord(item || {});
+      else if (collection === 'appointments') addAppointmentRecord(item || {});
+      else if (collection === 'reservations') addReservationRecord(item || {});
+      else if (collection === 'contacts') {
+        secretaryData.contacts.unshift({
+          id: 'cnt_' + Date.now(),
+          name: item?.name || 'Contacto',
+          phone: item?.phone || '',
+          relation: item?.relation || 'Cliente / Personal',
+          vip: Boolean(item?.vip),
+          notes: item?.notes || '',
+        });
+        broadcastSecretaryUpdate();
+      } else if (collection === 'blockedDates') {
+        secretaryData.blockedDates.unshift({
+          id: 'blk_' + Date.now(),
+          from: item?.from || '',
+          to: item?.to || '',
+          reason: item?.reason || 'Ocupado',
+        });
+        broadcastSecretaryUpdate();
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, secretaryData }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/secretary/item/toggle' && req.method === 'POST') {
+    try {
+      const { collection, id } = await readJsonBody(req);
+      const list = secretaryData[collection];
+      if (Array.isArray(list)) {
+        const target = list.find((x) => x.id === id);
+        if (target) {
+          if (collection === 'contacts') {
+            target.vip = !target.vip;
+          } else {
+            target.status = target.status === 'completado' ? 'pendiente' : 'completado';
+          }
+          broadcastSecretaryUpdate();
+        }
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, secretaryData }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/secretary/item/delete' && req.method === 'POST') {
+    try {
+      const { collection, id } = await readJsonBody(req);
+      if (Array.isArray(secretaryData[collection])) {
+        secretaryData[collection] = secretaryData[collection].filter((x) => x.id !== id);
+        if (collection === 'invoices') {
+          rebuildContractsContextFromInvoices();
+        }
+        broadcastSecretaryUpdate();
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, secretaryData }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
     return;
   }
 
@@ -870,6 +2118,7 @@ const server = http.createServer(async (req, res) => {
             ...appConfig,
             hasApiKey: Boolean(appConfig.geminiApiKey),
             hasTwilio: Boolean(appConfig.twilioAccountSid && appConfig.twilioAuthToken),
+            hasTelegram: Boolean(appConfig.telegramBotToken && appConfig.telegramChatId),
           },
         })
       );
@@ -880,10 +2129,10 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // --- API: Start Simulated Commercial Call ---
+  // --- API: Start Simulated Call ---
   if (pathname === '/api/call/simulate' && req.method === 'POST') {
     const body = await readJsonBody(req);
-    runSimulatedCall(body.scenario || 'b2b_opportunity');
+    runSimulatedCall(body.scenario || 'reservation_request');
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, call: serializeCall(activeCall) }));
     return;
@@ -899,19 +2148,13 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    appendTranscriptChunk('owner_whisper', `⚡ Orden enviada al asistente: "${instruction}"`);
+    appendTranscriptChunk('owner_whisper', `⚡ Orden enviada a tu secretaria: "${instruction}"`);
 
     if (activeCall.geminiSession) {
       activeCall.geminiSession.sendWhisper(instruction);
     } else if (activeCall.source === 'simulation') {
-      // Simulated response to owner's live instruction
-      setTimeout(() => {
-        if (!activeCall || activeCall.status !== 'screening') return;
-        appendTranscriptChunk(
-          'assistant',
-          `Me indica ${appConfig.ownerName} ahora mismo por pantalla lo siguiente: ${instruction}`
-        );
-      }, 900);
+      const replyText = `Me indica ${appConfig.ownerName} ahora mismo por pantalla lo siguiente: ${instruction}`;
+      speakAndAppendTranscript('assistant', replyText, appConfig.voiceName || 'Aoede');
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -937,13 +2180,11 @@ const server = http.createServer(async (req, res) => {
       if (mode === 'mobile') {
         if (activeCall.geminiSession) {
           activeCall.geminiSession.sendWhisper(
-            `Dile al interlocutor exactamente: "Un momento por favor, ${appConfig.ownerName} me confirma que le interesa hablar con usted y le desvío la llamada a su móvil ahora mismo."`
+            `Dile al interlocutor exactamente: "Un momento por favor, ${appConfig.ownerName} me confirma que le atiende ahora mismo y le desvío la llamada a su móvil."`
           );
         } else {
-          appendTranscriptChunk(
-            'assistant',
-            `Perfecto, ${appConfig.ownerName} me confirma en pantalla que le interesa atenderle. No cuelgue, le desvío la llamada a su móvil personal (${targetPhone}) ahora mismo.`
-          );
+          const transferSpeech = `Perfecto, ${appConfig.ownerName} me confirma en pantalla que le atiende él mismo. No cuelgue, le paso la llamada a su móvil ahora mismo.`;
+          speakAndAppendTranscript('assistant', transferSpeech, appConfig.voiceName || 'Aoede');
         }
 
         const transferResult = await redirectTwilioCallToMobile(activeCall.callSid, targetPhone);
@@ -961,7 +2202,6 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, result: transferResult }));
       } else {
-        // Take over directly from the web dashboard
         if (activeCall.geminiSession) {
           activeCall.geminiSession.close();
           activeCall.geminiSession = null;
@@ -969,12 +2209,12 @@ const server = http.createServer(async (req, res) => {
         activeCall.status = 'taken_over_web';
         appendTranscriptChunk(
           'system',
-          `🎙️ Has tomado el control de la llamada desde el panel web. El asistente IA se ha silenciado.`
+          `🎙️ Has tomado el control de la llamada desde el panel web. Tu secretaria IA se ha silenciado.`
         );
         broadcastToDashboard({
           type: 'call_transferred',
           mode: 'web',
-          message: 'Has tomado la llamada en directo desde el panel. El asistente IA ya no interviene.',
+          message: 'Has tomado la llamada en directo desde el panel. Tu secretaria IA ya no interviene.',
           call: serializeCall(activeCall),
         });
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1057,14 +2297,15 @@ server.on('upgrade', (req, socket) => {
   const ws = upgradeToWebSocket(req, socket);
   if (!ws) return;
 
-  // 1. Live Dashboard Stream (Transcript, Call Status & Classification updates)
+  // 1. Live Dashboard Stream (Transcript, Call Status, Secretary Records & Classification updates)
   if (pathname === '/ws/dashboard') {
     dashboardClients.add(ws);
     ws.send(
       JSON.stringify({
         type: 'init',
         activeCall: serializeCall(activeCall),
-        history: callHistory,
+        secretaryData,
+        history: secretaryData.history,
       })
     );
     ws.on('close', () => dashboardClients.delete(ws));
@@ -1081,6 +2322,7 @@ server.on('upgrade', (req, socket) => {
 
     try {
       call.geminiSession = createGeminiLiveSession({
+        callerMemory: call.callerMemory,
         onAudioChunk(base64Pcm24k) {
           ws.send(JSON.stringify({ type: 'audio', data: base64Pcm24k }));
         },
@@ -1139,8 +2381,22 @@ server.on('upgrade', (req, socket) => {
           call.twilioWs = ws;
           call.twilioStreamSid = msg.start?.streamSid;
 
+          sendTelegramNotification(
+            `📞 <b>Llamada entrante atendida por tu Secretaria IA</b>\n📱 <b>Desde:</b> ${call.fromNumber}\n${
+              call.callerMemory
+                ? `🧠 <b>Reconocido:</b> ${call.callerMemory.callerName}`
+                : '🕵️‍♀️ Identificando quién llama...'
+            }\n<i>Responde a este mensaje para susurrarle una orden en vivo o envía /desviar para pasarla a tu móvil.</i>`
+          );
+
           call.geminiSession = createGeminiLiveSession({
+            callerMemory: call.callerMemory,
             onAudioChunk(base64Pcm24k) {
+              broadcastToDashboard({
+                type: 'call_audio',
+                role: 'assistant',
+                data: base64Pcm24k,
+              });
               if (!call.twilioStreamSid || ws.readyState !== 1) return;
               const pcm24kBuf = Buffer.from(base64Pcm24k, 'base64');
               const mulaw8kBuf = pcm24kToMulaw8k(pcm24kBuf);

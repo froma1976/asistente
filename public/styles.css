@@ -711,3 +711,404 @@ body {
   justify-content: flex-end;
   gap: 10px;
 }
+
+/* ============================================================================
+   Secretary Hub: Reservas, Agenda y Citas, Recados & Facturas
+   ============================================================================ */
+.secretary-hub {
+  margin-top: 4px;
+}
+
+.hub-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+
+.hub-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hub-tab {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  transition: all 0.16s ease;
+}
+
+.hub-tab:hover {
+  color: var(--text);
+  border-color: var(--primary);
+}
+
+.hub-tab.active {
+  background: rgba(99, 102, 241, 0.22);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+
+.tab-count {
+  background: rgba(16, 185, 129, 0.25);
+  color: #6ee7b7;
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.hub-pane {
+  display: none;
+}
+
+.hub-pane.active {
+  display: block;
+}
+
+.pane-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 0.83rem;
+  color: var(--muted);
+}
+
+.secretary-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 12px;
+}
+
+.sec-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 28px 16px;
+  background: #0d1322;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.sec-item {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.18s ease;
+}
+
+.sec-item:hover {
+  border-color: #475569;
+}
+
+.sec-item.completed {
+  opacity: 0.65;
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.sec-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.sec-item-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.sec-badge {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sec-badge.urgent {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.sec-badge.pending {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fde68a;
+}
+
+.sec-badge.done {
+  background: rgba(16, 185, 129, 0.22);
+  color: #6ee7b7;
+}
+
+.sec-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.79rem;
+  color: #a5b4fc;
+}
+
+.sec-body {
+  font-size: 0.86rem;
+  color: #e2e8f0;
+  background: rgba(11, 15, 25, 0.55);
+  padding: 9px 11px;
+  border-radius: 8px;
+}
+
+.sec-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.sec-time {
+  font-size: 0.73rem;
+  color: var(--muted);
+}
+
+.sec-btn-group {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-xs {
+  padding: 4px 9px;
+  font-size: 0.75rem;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.btn-xs:hover {
+  border-color: var(--primary);
+}
+
+.btn-xs.danger:hover {
+  border-color: var(--danger);
+  color: #fca5a5;
+}
+
+/* Invoices Grid */
+.invoices-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 900px) {
+  .invoices-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.invoice-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.invoice-card.energy {
+  border-left: 4px solid #f59e0b;
+}
+
+.invoice-card.telco {
+  border-left: 4px solid #6366f1;
+}
+
+.invoice-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.invoice-icon {
+  font-size: 1.7rem;
+}
+
+.invoice-card-head h3 {
+  font-size: 0.98rem;
+}
+
+.invoice-card-head small {
+  color: var(--muted);
+  font-size: 0.77rem;
+}
+
+.invoice-total {
+  margin-left: auto;
+  background: rgba(16, 185, 129, 0.16);
+  color: #6ee7b7;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.invoice-specs {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 0.84rem;
+}
+
+.invoice-specs code {
+  background: rgba(99, 102, 241, 0.18);
+  color: #c7d2fe;
+  padding: 1px 6px;
+  border-radius: 5px;
+}
+
+.highlight-val {
+  color: #34d399;
+}
+
+/* ============================================================================
+   SaaS KPI Bar, Template Selector, Blocked Dates & WhatsApp Pills
+   ============================================================================ */
+.kpi-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 18px;
+}
+
+.kpi-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.kpi-box {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  min-width: 145px;
+}
+
+.kpi-box.highlight {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.kpi-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.kpi-val {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.kpi-box.highlight .kpi-val {
+  color: #34d399;
+}
+
+.template-selector-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.template-selector-box label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.template-selector-box select {
+  background: var(--surface-2);
+  border: 1px solid #6366f1;
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.blocked-dates-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.blocked-pill {
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.38);
+  color: #fca5a5;
+  padding: 5px 11px;
+  border-radius: 99px;
+  font-size: 0.77rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.blocked-pill button {
+  background: transparent;
+  border: none;
+  color: #fca5a5;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.btn-xs.whatsapp {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.45);
+  color: #6ee7b7;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-xs.whatsapp:hover {
+  background: rgba(16, 185, 129, 0.3);
+}
+
+
