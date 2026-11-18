@@ -2648,6 +2648,23 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       const mode = body.mode || 'mobile'; // 'mobile' | 'web'
       const targetPhone = body.phoneNumber || appConfig.personalPhoneNumber;
+      if ('liveId' in body) {
+        const c = activeCall;
+        const reply = (code,data) => {res.writeHead(code,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
+        if (!c || c.id !== body.liveId || c.source !== 'twilio' || c.status !== 'screening' || c.requestingTransfer)
+          return reply(409,{error:'Esta llamada ya no está disponible para retomar.'});
+        c.requestingTransfer=true;
+        try {
+          const result=await redirectTwilioCallToMobile(c.callSid,appConfig.personalPhoneNumber);
+          if (result.simulated) throw Error();
+          if(activeCall===c && c.status==='screening') {
+            c.status='transferred';
+            appendTranscriptChunk('system','Desvío solicitado al móvil del titular.');
+          }
+          return reply(200,{ok:true});
+        } catch {return reply(502,{error:'No se pudo pasar la llamada a tu móvil.'});}
+        finally {c.requestingTransfer=false;}
+      }
 
       if (!activeCall) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
