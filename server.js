@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const {datosParaVoz,contextoContratos,permiso}=require('./datos-voz');
 
 // Load .env if present
 const envPath = path.join(__dirname, '.env');
@@ -199,6 +200,8 @@ let secretaryData = {
     estimatedValueEur: 480,
   },
   history: [],
+  ownerTasks: [],
+  claraChat: [],
 };
 
 if (fs.existsSync(secretaryDataPath)) {
@@ -213,6 +216,8 @@ if (fs.existsSync(secretaryDataPath)) {
       blockedDates: Array.isArray(loaded.blockedDates) ? loaded.blockedDates : secretaryData.blockedDates,
       stats: loaded.stats ? { ...secretaryData.stats, ...loaded.stats } : secretaryData.stats,
       history: Array.isArray(loaded.history) ? loaded.history : [],
+      ownerTasks: Array.isArray(loaded.ownerTasks) ? loaded.ownerTasks : [],
+      claraChat: Array.isArray(loaded.claraChat) ? loaded.claraChat : [],
     };
   } catch (e) {
     console.error('Error leyendo secretary_data.json:', e.message);
@@ -874,10 +879,10 @@ function buildGoogleCalendarDateRange(dateStr, timeStr) {
  */
 async function syncAppointmentToGoogleCalendar(item) {
   const accessToken = await getGoogleAccessToken();
-  if (!accessToken) return null;
+  if (!accessToken) throw Error('Google Calendar no está conectado.');
 
   const calendarId = encodeURIComponent(appConfig.googleCalendarId || 'primary');
-  const { start, end } = buildGoogleCalendarDateRange(item.date, item.time);
+  const { start, end } = agenda.range(item.date, item.time);
   const descriptionParts = [
     `Persona/Entidad: ${item.withPerson}`,
     `Teléfono: ${item.phone}`,
@@ -914,7 +919,27 @@ async function syncAppointmentToGoogleCalendar(item) {
   return created;
 }
 
-function addAppointmentRecord({ title, withPerson, phone, date, time, locationOrChannel, notes }) {
+const agenda=require('./agenda');
+const mesa=require('./mesa');
+function makeTableRecorder() {
+  return mesa.recorder({checkSlot,notify:text=>sendTelegramNotification(text,true),createEvent:async body=>{
+    const token=await getGoogleAccessToken();
+    if(!token) throw Error();
+    const id=encodeURIComponent(appConfig.googleCalendarId||'primary');
+    const r=await fetch(`https://www.googleapis.com/calendar/v3/calendars/${id}/events`,{
+      method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(12000)
+    });
+    if(!r.ok) throw Error();
+  }});
+}
+const checkSlot=args=>agenda.check(args,getGoogleAccessToken,appConfig.googleCalendarId||'primary');
+let agendaQueue=Promise.resolve();
+function addAppointmentRecord(args) {
+  const run=agendaQueue.then(()=>saveAppointment(args));
+  agendaQueue=run.catch(()=>{});
+  return run;
+}
+async function saveAppointment({ title, withPerson, phone, date, time, locationOrChannel, notes }) {
   const item = {
     id: 'apt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
     title: title || `Cita con ${withPerson || 'contacto'}`,
@@ -932,6 +957,11 @@ function addAppointmentRecord({ title, withPerson, phone, date, time, locationOr
       minute: '2-digit',
     }),
   };
+  if (appConfig.googleRefreshToken) {
+    const slot=await checkSlot(item);
+    if(slot.estado!=='libre') throw Error(slot.estado==='ocupado'?'Esa hora está ocupada.':'No se pudo comprobar la disponibilidad.');
+    await syncAppointmentToGoogleCalendar(item);
+  }
   secretaryData.appointments.unshift(item);
   upsertContactFromAction({
     name: item.withPerson,
@@ -947,11 +977,6 @@ function addAppointmentRecord({ title, withPerson, phone, date, time, locationOr
   sendTelegramNotification(
     `📅 <b>Nueva Cita Agendada en tu Calendario</b>\n📌 <b>Motivo:</b> ${item.title}\n👤 <b>Con:</b> ${item.withPerson} (${item.phone})\n🕒 <b>Cuándo:</b> ${item.date} a las ${item.time}\n📍 <b>Lugar:</b> ${item.locationOrChannel}\n📝 <b>Notas:</b> ${item.notes || '—'}`
   );
-  if (appConfig.googleRefreshToken) {
-    syncAppointmentToGoogleCalendar(item).catch((err) => {
-      console.error('Error sincronizando con Google Calendar:', err.message);
-    });
-  }
   return item;
 }
 
@@ -1037,9 +1062,10 @@ FUNCIONES PRINCIPALES DE SECRETARIA (USA SIEMPRE LAS HERRAMIENTAS CORRESPONDIENT
    En cuanto sepas quién llama y para qué, ejecuta 'classify_call' en segundo plano para actualizar la ficha en la pantalla de ${appConfig.ownerName}.
 6. COMPARACIÓN INTELIGENTE CON LAS FACTURAS DE LUZ Y MÓVIL DE ${appConfig.ownerName.toUpperCase()}:
    Tienes acceso al contexto real de los contratos actuales de ${appConfig.ownerName}:
-   ${appConfig.contractsContext || DEFAULT_CONTRACTS_CONTEXT}
+    ${contextoContratos(appConfig.contractsContext || DEFAULT_CONTRACTS_CONTEXT)}
+    Perfil: ${datosParaVoz(appConfig.lifeContext)}. ${permiso}
    - Si llaman de una compañía eléctrica o de telecomunicaciones, NO cuelgues a ciegas sin preguntar ni aceptes eslóganes genéricos: pregúntales el precio exacto (€/kWh fijo en luz, o precio final IVA incluido para Fibra 1Gb + las 5 líneas móviles en telefonía).
-   - Compara su oferta con las facturas reales de ${appConfig.ownerName}. Si su oferta es peor o no mejora claramente lo que ya paga, explícalo con los números reales (sin dar nunca DNI, CUPS ni cuenta bancaria), despídete educadamente y ejecuta 'reject_and_hangup'.
+    - Compara su oferta con las facturas reales de ${appConfig.ownerName}. Si su oferta es peor o no mejora claramente lo que ya paga, explícalo con los números reales, despídete educadamente y ejecuta 'reject_and_hangup'.
    - Si realmente mejoran sus condiciones actuales, toma nota en un recado ('take_message') o pídeles que lo envíen a ${appConfig.ownerEmail}.
 7. REGLAS ADICIONALES DE ${appConfig.ownerName.toUpperCase()}:
    ${appConfig.filterRules}
@@ -1166,7 +1192,7 @@ const GEMINI_TOOLS = [
             },
             date: {
               type: 'STRING',
-              description: 'Fecha de la cita (ej. "Jueves 19/11/2026" o "Mañana")',
+              description: 'Fecha exacta AAAA-MM-DD en Europe/Madrid',
             },
             time: {
               type: 'STRING',
@@ -1248,6 +1274,10 @@ const GEMINI_TOOLS = [
 // Gemini 3.8 Live Session Manager (Raw WebSocket to Gemini Live API)
 // ============================================================================
 function createGeminiLiveSession({
+  phoneCall,
+  onCheck,
+  onTable,
+  onReady,
   callerMemory,
   onAudioChunk,
   onTranscript,
@@ -1266,7 +1296,8 @@ function createGeminiLiveSession({
   )}`;
 
   const geminiWs = new WebSocket(wsUrl);
-  let isSetupComplete = false;
+  let isSetupComplete = false, checksMade=0;
+  const registerTable=phoneCall?.simulated && phoneCall.goal ? makeTableRecorder() : null;
 
   geminiWs.addEventListener('open', () => {
     const setupMessage = {
@@ -1278,17 +1309,28 @@ function createGeminiLiveSession({
             languageCode: 'es-ES',
             voiceConfig: {
               prebuiltVoiceConfig: {
-                voiceName: appConfig.voiceName || 'Aoede',
+                voiceName: appConfig.voiceName === 'Aoede' || !appConfig.voiceName ? 'Sulafat' : appConfig.voiceName,
               },
             },
           },
         },
         systemInstruction: {
-          parts: [{ text: buildSystemInstruction(callerMemory) }],
+          parts: [{ text: (phoneCall ? `Eres Clara, asistente de voz de ${appConfig.ownerName}. Preséntate como su asistente. Habla en español de forma breve y natural. Hoy es ${new Date().toLocaleDateString('es-ES',{dateStyle:'full'})}.
+${permiso}
+Perfil del titular: ${JSON.stringify(datosParaVoz(appConfig.lifeContext))}. Teléfono personal: ${datosParaVoz(appConfig.personalPhoneNumber)}. Contexto de contratos: ${JSON.stringify(contextoContratos(appConfig.contractsContext))}.
+Facturas registradas: ${JSON.stringify(invoiceBriefs())}. Distingue cuota, consumos y financiación; no deduzcas importes ausentes. Si hay cifras contradictorias o de períodos distintos, no afirmes un precio definitivo. No contrates cambios por tu cuenta.
+Ante una oferta comercial, da los datos solicitados según la autorización anterior. Pregunta por empresa, nombre de tarifa, impuestos, extras, duración del descuento, precio definitivo y permanencia. En cuanto conozcas marca y sector, usa consultar_tarifa_publica para contrastar condiciones de energía o telefonía. Si no hay fuentes o no coincide exactamente, di que no has podido verificar la oferta. No identifiques al interlocutor por una coincidencia pública. No compartas códigos de acceso de un solo uso.
+${phoneCall.goal ? 'Tú has llamado para este encargo concreto: '+phoneCall.goal : 'Atiende la llamada, pregunta quién llama y por qué. Si no puedes resolverlo, recoge el recado verbalmente.'}` : buildSystemInstruction(callerMemory)) + `
+Agenda personal: antes de ofrecer o confirmar una hora consulta consultar_agenda con fecha exacta y hora de Madrid. Si está ocupada pide otra hora y compruébala. Si no puedes verificarla, no la ofrezcas como libre. No reveles motivos de ocupación. Confirma que una cita quedó anotada solo tras el éxito de schedule_appointment.
+${mesa.margen}
+${registerTable?'Cuando recepción confirme explícitamente la mesa, registra la fecha y hora exactas acordadas con registrar_mesa_confirmada antes de despedirte. Una hora alternativa autorizada y confirmada también se registra. No registres una mera oferta o una negativa. El evento y el aviso son de prueba.':''}
+Habla como en una conversación, con melodía y respiraciones discretas, no con la cadencia uniforme de quien lee un guion. Una idea por frase. Da énfasis a la palabra importante y deja caer la voz al terminar. Usa respuestas espontáneas cuando encajen, sin repetir muletillas.
+Ritmo al teléfono: deja terminar a quien habla y contesta directamente, en frases cortas. Si necesitas tiempo para comparar cifras, comprobar datos o hacer una gestión, empieza en voz alta con un aviso breve («Dame un segundo», «Un momentito, que lo miro») y continúa tú misma con la respuesta, sin esperar otro turno. Una sola vez por gestión. No anuncies esperas para respuestas sencillas ni finjas consultar algo a lo que no tienes acceso.
+Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaciones. Sé cálida por defecto. Si te gastan una broma amable, puedes seguirla o soltar una pequeña risa natural. Ante una preocupación, baja el ritmo y escucha sin bromear. Si te piden discreción, puedes susurrar manteniéndote inteligible. Si insisten tras un no, deja que se note la molestia con una frase corta y firme, sin gritar ni insultar. No fuerces estas reacciones.` }],
         },
         inputAudioTranscription: {},
         outputAudioTranscription: {},
-        tools: GEMINI_TOOLS,
+        tools: phoneCall ? [{functionDeclarations:[...ofertas.searchTool[0].functionDeclarations,agenda.tool,...(registerTable?[mesa.tool]:[]),...(phoneCall.simulated?[]:[GEMINI_TOOLS[0].functionDeclarations.find(f=>f.name==='schedule_appointment')])]}] : [{functionDeclarations:[...GEMINI_TOOLS[0].functionDeclarations,agenda.tool]}],
       },
     };
     geminiWs.send(JSON.stringify(setupMessage));
@@ -1311,7 +1353,8 @@ function createGeminiLiveSession({
 
       if (msg.setupComplete !== undefined && !isSetupComplete) {
         isSetupComplete = true;
-        const greetingHint = callerMemory?.callerName
+        onReady?.();
+        const greetingHint = phoneCall ? (phoneCall.goal ? 'Han descolgado. Preséntate y explica el motivo de tu llamada.' : 'Ha entrado una llamada. Saluda y pregunta en qué puedes ayudar.') : callerMemory?.callerName
           ? `[SISTEMA: Acaba de entrar la llamada de un contacto conocido (${callerMemory.callerName}). Habla con acento español de España (castellano peninsular). Salúdale por su nombre y menciona que recuerdas su contacto o gestión anterior.]`
           : `[SISTEMA: Acaba de entrar la llamada y han descolgado. Habla con acento español de España (castellano peninsular nativo). Saluda ahora mismo como secretaria personal de ${appConfig.ownerName} y pregunta de parte de quién llaman y en qué puedes ayudarle.]`;
         geminiWs.send(
@@ -1353,7 +1396,30 @@ function createGeminiLiveSession({
       }
 
       // Handle asynchronous NON_BLOCKING tool calls
-      if (msg.toolCall?.functionCalls) {
+      if (phoneCall && msg.toolCall?.functionCalls) {
+        const functionResponses=[];
+        for (const fc of msg.toolCall.functionCalls) {
+          let result={nota:'Consulta no disponible.',fuentes:[]};
+          if(fc.name==='consultar_agenda') result=await checkSlot(fc.args||{});
+          else if(fc.name==='registrar_mesa_confirmada' && registerTable) {
+            result=await registerTable(fc.args);
+            if(!result.error) onTable?.(result);
+          }
+          else if(fc.name==='schedule_appointment' && !phoneCall.simulated) {
+            try {
+              if(!appConfig.googleRefreshToken) throw Error('Calendar no conectado.');
+              await addAppointmentRecord(fc.args||{}); result={estado:'confirmada'};
+            } catch(e) {result={estado:'no_confirmada',motivo:e.message};}
+          } else if (fc.name==='consultar_tarifa_publica' && checksMade < 3) {
+            checksMade++;
+            result=await ofertas.lookup(apiKey,fc.args||{});
+            onCheck?.(result);
+          }
+          functionResponses.push({id:fc.id,name:fc.name,response:result});
+        }
+        if (geminiWs.readyState===WebSocket.OPEN) geminiWs.send(JSON.stringify({toolResponse:{functionResponses}}));
+      }
+      if (!phoneCall && msg.toolCall?.functionCalls) {
         const functionResponses = [];
         for (const call of msg.toolCall.functionCalls) {
           const args = call.args || {};
@@ -1386,7 +1452,14 @@ function createGeminiLiveSession({
               response: { status: 'message_saved', id: saved.id },
             });
           } else if (call.name === 'schedule_appointment') {
-            const saved = addAppointmentRecord(args);
+            let saved;
+            try {
+              if(!appConfig.googleRefreshToken) throw Error('Calendar no conectado.');
+              saved = await addAppointmentRecord(args);
+            } catch(e) {
+              functionResponses.push({id:call.id,name:call.name,response:{estado:'no_confirmada',motivo:e.message}});
+              continue;
+            }
             onClassification?.({
               callerName: saved.withPerson,
               category: 'Cita / Agenda',
@@ -1399,6 +1472,8 @@ function createGeminiLiveSession({
               name: call.name,
               response: { status: 'appointment_scheduled', id: saved.id },
             });
+          } else if (call.name === 'consultar_agenda') {
+            functionResponses.push({id:call.id,name:call.name,response:await checkSlot(args)});
           } else if (call.name === 'take_reservation') {
             const saved = addReservationRecord(args);
             onClassification?.({
@@ -1654,7 +1729,7 @@ function updateCallClassification(patch) {
 
 function endActiveCall(reason = 'Llamada finalizada') {
   clearSimulationTimers();
-  if (!activeCall) return;
+  if (!activeCall || activeCall.status === 'ended') return;
   activeCall.status = 'ended';
   activeCall.endedReason = reason;
   if (activeCall.geminiSession) {
@@ -1666,9 +1741,11 @@ function endActiveCall(reason = 'Llamada finalizada') {
     activeCall.twilioWs = null;
   }
   const snapshot = serializeCall(activeCall);
+  snapshot.checks=activeCall.checks||[];
   secretaryData.history.unshift(snapshot);
   if (secretaryData.history.length > 30) secretaryData.history.pop();
   saveSecretaryData();
+  if(snapshot.source==='twilio') reviewOffer(snapshot);
 
   broadcastToDashboard({
     type: 'call_ended',
@@ -1844,11 +1921,11 @@ function getSimulationScenarios() {
               title: 'Revisión trimestral e impuestos',
               withPerson: 'Elena Castro (Asesoría Fiscal)',
               phone: '+34 982 45 11 08',
-              date: 'Jueves 19/11/2026',
+              date: '2026-11-19',
               time: '11:30',
               locationOrChannel: 'Despacho Asesoría (Monforte)',
               notes: 'Llevar facturas de suministros (Repsol, Yoigo) y proveedores.',
-            });
+            }).catch(()=>appendTranscriptChunk('system','Cita no guardada.'));
             addMessageRecord({
               callerName: 'Elena Castro (Asesoría)',
               phone: '+34 982 45 11 08',
@@ -2040,9 +2117,113 @@ function readJsonBody(req) {
   });
 }
 
+const ofertas=require('./ofertas');
+async function reviewOffer(record) {
+  if(!appConfig.geminiApiKey || !record.transcript?.length) return;
+  try { record.offerReview=await ofertas.summarize(appConfig.geminiApiKey,record,invoiceBriefs()); }
+  catch { record.offerReview={veredicto:'Valoración no disponible',resumen:'No se ha podido analizar la transcripción.'}; }
+  saveSecretaryData();
+}
+function invoiceBriefs() {
+  const clean = datosParaVoz;
+  return (secretaryData.invoices || []).map(inv => ({
+    provider:clean(inv.provider), category:clean(inv.category), price:clean(inv.monthlyTotal),
+    detalle:clean(inv.subtitle), terms:(inv.keyRates || []).map(clean), criterion:clean(inv.negotiationRule),
+  }));
+}
+const phone = require('./phone').createPhone(() => appConfig, saveConfig, () => activeCall, invoiceBriefs);
+const rehearsalCalls = new Map();
+let claraReplyPending = false;
 const server = http.createServer(async (req, res) => {
   const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = urlObj.pathname;
+  if (pathname !== '/twilio/voice' && !phone.authorized(req)) {
+    res.writeHead(401, {'WWW-Authenticate':'Basic realm="Clara", charset="UTF-8"'}); return res.end();
+  }
+  if (pathname === '/twilio/voice' || pathname.startsWith('/api/phone')) {
+    return phone.handle(pathname, req, res, readJsonBody);
+  }
+  if (pathname === '/api/clara/conversation' && req.method === 'GET') {
+    res.writeHead(200, {'Content-Type':'application/json','Cache-Control':'no-store'});
+    return res.end(JSON.stringify(secretaryData.claraChat));
+  }
+  if (pathname === '/api/transcripciones' && req.method === 'GET') {
+    res.writeHead(200, {'Content-Type':'application/json','Cache-Control':'no-store'});
+    const live = [...rehearsalCalls.values()];
+    if (activeCall && activeCall.status !== 'ended') live.unshift(serializeCall(activeCall));
+    return res.end(JSON.stringify({live, history:secretaryData.history}));
+  }
+
+  if (pathname === '/api/clara/restaurant-test' && req.method === 'POST') {
+    const reply = (code, data) => {
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(data));
+    };
+    let body;
+    try { body = await readJsonBody(req); } catch {}
+    const { task, turns } = body || {};
+    if (typeof task !== 'string' || !task.trim() || task.length > 2000 ||
+        !Array.isArray(turns) || !turns.length || turns.length > 61 || turns.length % 2 !== 1 ||
+        !turns.every((t,i) => t?.role === (i % 2 ? 'model' : 'user') &&
+          typeof t.text === 'string' && t.text.trim() && t.text.length <= 4000))
+      return reply(400, { error: 'El diálogo no es válido o ha alcanzado el límite de turnos.' });
+    if (!appConfig.geminiApiKey) return reply(503, {error:'Configura Gemini en Ajustes para probar la conversación.'});
+    try {
+      const result = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+        method:'POST', headers:{'Content-Type':'application/json','x-goog-api-key':appConfig.geminiApiKey},
+        signal:AbortSignal.timeout(45000), body:JSON.stringify({
+          systemInstruction:{parts:[{text:`Simulación de una llamada saliente. Eres Clara, la asistente que llama al restaurante por este encargo: ${JSON.stringify(task)}. El usuario interpreta exclusivamente a recepción. ${mesa.margen} En esta prueba de texto no tienes acceso a la agenda; no afirmes haberla consultado. Mantén en_curso mientras buscas otro hueco autorizado. Solo declara confirmada si recepción confirma explícitamente la mesa a la hora acordada. Devuelve frase (solo lo que dices en voz alta) y estado (en_curso, confirmada o sin_confirmar).`}]},
+          contents:turns.map(t=>({role:t.role,parts:[{text:t.text}]})),
+          generationConfig:{responseMimeType:'application/json',responseSchema:{type:'OBJECT',properties:{
+            frase:{type:'STRING'},estado:{type:'STRING',enum:['en_curso','confirmada','sin_confirmar']}
+          },required:['frase','estado']}}
+        })
+      });
+      if (!result.ok) throw new Error();
+      const data = await result.json();
+      const turn = JSON.parse(data.candidates[0].content.parts.filter(p=>!p.thought).map(p=>p.text).join(''));
+      if (typeof turn.frase !== 'string' || !turn.frase.trim() || !['en_curso','confirmada','sin_confirmar'].includes(turn.estado)) throw new Error();
+      return reply(200, turn);
+    } catch { return reply(502,{error:'Clara no ha podido responder. Comprueba Gemini y vuelve a intentarlo.'}); }
+  }
+
+  if (pathname === '/api/clara/chat' && req.method === 'POST') {
+    const send = (status, data) => {
+      res.writeHead(status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(data));
+    };
+    let text;
+    try { text = (await readJsonBody(req)).text.trim(); } catch {}
+    if (!text || text.length > 2000) return send(400, { error: 'Escribe un mensaje de hasta 2000 caracteres.' });
+    if (!appConfig.geminiApiKey) return send(503, { error: 'Configura la clave de Gemini en Ajustes para hablar con Clara.' });
+    if (claraReplyPending) return send(409, { error: 'Clara está respondiendo. Inténtalo de nuevo en un momento.' });
+    claraReplyPending = true;
+    try {
+      const turn = { role: 'user', text };
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': appConfig.geminiApiKey },
+        signal: AbortSignal.timeout(45000),
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: `Eres Clara, la asistente personal del usuario. Hoy es ${new Date().toLocaleDateString('es-ES', {dateStyle:'full'})}. Conversa en español natural. Preferencias del titular: ${JSON.stringify(appConfig.lifeContext || '')}. Facturas registradas: ${JSON.stringify(invoiceBriefs())}. No inventes datos ausentes. Para un encargo, pregunta solo lo que falte. Si te dan una franja horaria, incluye ambos límites en nuevoEncargo y no pidas una hora exacta. Cuando quede completo, incluye su resumen en nuevoEncargo y explica que el titular puede usar Preparar una llamada y revisar el número antes de marcar. En otros turnos usa una cadena vacía. El chat no marca ni confirma reservas.` }] },
+          contents: [...secretaryData.claraChat.slice(-24), turn].map(m => ({ role: m.role, parts: [{ text: m.text }] })),
+          generationConfig: { responseMimeType: 'application/json', responseSchema: {
+            type: 'OBJECT', properties: { respuesta: { type: 'STRING' }, nuevoEncargo: { type: 'STRING' } }, required: ['respuesta','nuevoEncargo'],
+          } },
+        }),
+      });
+      if (!response.ok) throw new Error();
+      const payload = await response.json();
+      const answer = JSON.parse(payload.candidates[0].content.parts.filter(p => !p.thought).map(p => p.text).join(''));
+      if (typeof answer.respuesta !== 'string' || !answer.respuesta.trim() || typeof answer.nuevoEncargo !== 'string') throw new Error();
+      secretaryData.claraChat.push(turn, { role: 'model', text: answer.respuesta });
+      if (answer.nuevoEncargo.trim()) secretaryData.ownerTasks.unshift({ text: answer.nuevoEncargo.trim(), createdAt: new Date().toISOString(), status: 'pending' });
+      broadcastSecretaryUpdate();
+      return send(200, { ok: true, secretaryData, newTask: answer.nuevoEncargo.trim() });
+    } catch {
+      return send(502, { error: 'Clara no ha podido responder. Comprueba la conexión y la configuración de Gemini y vuelve a enviar el mensaje.' });
+    } finally { claraReplyPending = false; }
+  }
 
   // --- API: Get Current Config, Secretary Records & State ---
   if (pathname === '/api/state' && req.method === 'GET') {
@@ -2214,8 +2395,13 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await readJsonBody(req);
       const { collection, item } = body;
-      if (collection === 'messages') addMessageRecord(item || {});
-      else if (collection === 'appointments') addAppointmentRecord(item || {});
+      if (collection === 'ownerTasks') {
+        const text = typeof item?.text === 'string' ? item.text.trim() : '';
+        if (!text || text.length > 2000) throw new Error('Escribe un encargo de hasta 2000 caracteres.');
+        secretaryData.ownerTasks.unshift({ text, createdAt: new Date().toISOString(), status: 'pending' });
+        broadcastSecretaryUpdate();
+      } else if (collection === 'messages') addMessageRecord(item || {});
+      else if (collection === 'appointments') await addAppointmentRecord(item || {});
       else if (collection === 'reservations') addReservationRecord(item || {});
       else if (collection === 'contacts') {
         secretaryData.contacts.unshift({
@@ -2523,7 +2709,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // --- Static Frontend Assets ---
-  let filePath = pathname === '/' ? path.join(publicDir, 'index.html') : path.join(publicDir, pathname);
+  let filePath = ['/', '/phone.html'].includes(pathname) ? path.join(publicDir, 'index.html') : path.join(publicDir, pathname);
   if (!filePath.startsWith(publicDir)) {
     res.writeHead(403);
     res.end('Forbidden');
@@ -2554,8 +2740,68 @@ server.on('upgrade', (req, socket) => {
   const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = urlObj.pathname;
 
+  const phoneCall = pathname.startsWith('/twilio/stream/') ? phone.redeem(pathname) : null;
+  if (!phoneCall && (!['/ws/dashboard','/ws/web-call','/ws/ensayo'].includes(pathname) || !phone.authorized(req))) return socket.destroy();
   const ws = upgradeToWebSocket(req, socket);
   if (!ws) return;
+
+  if (pathname === '/ws/ensayo') {
+    let live, ready = false, record;
+    const send = (type, data) => ws.send(JSON.stringify({type, data}));
+    const fail = message => { send('error', message); ws.close(); };
+    ws.on('message', raw => {
+      try {
+        const m = JSON.parse(raw);
+        if (m.type === 'start' && !live) {
+          if (!['in','out'].includes(m.mode) || (m.mode === 'out' && (typeof m.goal !== 'string' || !m.goal.trim() || m.goal.length > 2000))) return fail('Indica el motivo de la llamada.');
+          live = createGeminiLiveSession({
+            phoneCall:{simulated:true,goal:m.mode === 'out' ? m.goal : ''},
+            onReady:() => {
+              if (ws.readyState !== 1) return;
+              ready = true;
+              record = {id:crypto.randomUUID(), startedAt:new Date().toISOString(), source:'rehearsal',
+                fromNumber:m.mode === 'out' ? 'Simulación · Clara te llama' : 'Simulación · Tú llamas', transcript:[], status:'screening'};
+              rehearsalCalls.set(record.id, record);
+              send('ready');
+            },
+            onTranscript:(role,text) => {
+              if (!ready || !text) return;
+              const last = record.transcript.at(-1);
+              if (last?.role === role && Date.now()-last.updatedAt < 4500) {
+                last.text += text; last.updatedAt=Date.now();
+              } else record.transcript.push({role,text,updatedAt:Date.now(),timestamp:new Date().toLocaleTimeString('es-ES')});
+              send('transcript',record.transcript);
+            },
+            onAudioChunk:data => send('audio', data),
+            onCheck:result => {if(record) (record.checks ||= []).push(result);},
+            onTable:result => {
+              send('table',result);
+              if(record && !record.tableResult) {
+                record.tableResult=result;
+                record.transcript.push({role:'system',timestamp:new Date().toLocaleTimeString('es-ES'),text:`Mesa de prueba confirmada. Calendario: ${result.calendario}. Telegram: ${result.telegram}.`});
+                if(record.status==='ended') saveSecretaryData();
+              }
+            },
+            onInterrupted:() => send('interrupted'),
+            onError:() => fail('No se pudo conectar con Gemini Live. Revisa la configuración de voz.'),
+            onClose:() => fail('Se ha cerrado la sesión de voz con Gemini Live.'),
+          });
+        } else if (ready && m.type === 'audio' && typeof m.data === 'string' && m.data.length <= 32768) live.sendPcm16k(m.data);
+      } catch { fail('No se pudo iniciar la voz. Comprueba la clave de Gemini en Ajustes.'); }
+    });
+    ws.on('close', () => {
+      ready = false;
+      if (record && rehearsalCalls.delete(record.id)) {
+        record.status='ended';
+        secretaryData.history.unshift(record);
+        secretaryData.history.splice(30);
+        saveSecretaryData();
+        reviewOffer(record);
+      }
+      live?.close();
+    });
+    return;
+  }
 
   // 1. Live Dashboard Stream (Transcript, Call Status, Secretary Records & Classification updates)
   if (pathname === '/ws/dashboard') {
@@ -2624,7 +2870,7 @@ server.on('upgrade', (req, socket) => {
   }
 
   // 3. Twilio Media Streams Bidirectional WebSocket (/twilio/stream)
-  if (pathname === '/twilio/stream') {
+  if (phoneCall) {
     let call = null;
 
     ws.on('message', (raw) => {
@@ -2635,7 +2881,7 @@ server.on('upgrade', (req, socket) => {
           const customParams = msg.start?.customParameters || {};
           call = startNewCallState({
             source: 'twilio',
-            fromNumber: customParams.from || 'Llamada Telefónica Entrante',
+            fromNumber: phoneCall.number || 'Número desconocido',
             callSid: customParams.callSid || msg.start?.callSid,
           });
           call.twilioWs = ws;
@@ -2650,7 +2896,8 @@ server.on('upgrade', (req, socket) => {
           );
 
           call.geminiSession = createGeminiLiveSession({
-            callerMemory: call.callerMemory,
+            phoneCall, callerMemory: call.callerMemory,
+            onCheck:result => {(call.checks ||= []).push(result);},
             onAudioChunk(base64Pcm24k) {
               broadcastToDashboard({
                 type: 'call_audio',
@@ -2710,6 +2957,7 @@ server.listen(PORT, () => {
   console.log(`\n=============================================================`);
   console.log(`🛡️  Asistente Personal de Filtrado de Llamadas (Gemini 3.8 Live)`);
   console.log(`🌐 Panel en Vivo: http://localhost:${PORT}`);
+  console.log(`Acceso al panel: usuario clara · contraseña ${phone.password}`);
   console.log(`📞 Webhook Twilio: http://localhost:${PORT}/twilio/voice`);
   console.log(`=============================================================\n`);
 });

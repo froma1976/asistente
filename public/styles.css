@@ -37,6 +37,21 @@ body {
 }
 
 /* Header */
+#restaurantTest { border-top: 1px solid var(--border); padding-top: .75rem; }
+#restaurantTest summary { cursor: pointer; font-weight: 600; }
+#restaurantTest p, #restaurantTest label { display:block; margin: .55rem 0; }
+#restaurantTest textarea, #restaurantTest input { display:block; width:100%; margin:.4rem 0; padding:.6rem; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; font:inherit; }
+#rtLog { max-height:18rem; overflow:auto; }
+#restaurantTest [hidden] { display:none; }
+.clara-chat { display: grid; gap: .75rem; padding: 1rem; }
+#claraThread { display: grid; gap: .5rem; max-height: 23rem; overflow-y: auto; }
+#claraThread p { padding: .65rem .9rem; border-radius: 14px; max-width: min(85%, 65ch); white-space: pre-wrap; overflow-wrap: anywhere; }
+.from-clara { justify-self: start; background: var(--surface-2); }
+.from-owner { justify-self: end; background: #4338ca; color: white; }
+#claraForm { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+#claraText { flex: 1 1 18rem; min-width: 0; padding: .6rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font: inherit; }
+#claraMic[hidden], #claraFeedback:empty, #claraTasks:empty { display: none; }
+#claraTasks { padding-left: 1.4rem; color: var(--muted); }
 .topbar {
   display: flex;
   justify-content: space-between;

@@ -398,6 +398,34 @@ function buildWhatsAppUrl(phone, text) {
 }
 
 function renderSecretaryHub() {
+  const thread = document.getElementById('claraThread');
+  const turns = secretaryData.claraChat?.length ? secretaryData.claraChat : [{role:'model', text:'Soy Clara. ¿Qué necesitas?'}];
+  if (thread.dataset.snapshot !== JSON.stringify(turns)) {
+    thread.dataset.snapshot = JSON.stringify(turns);
+    thread.replaceChildren(...turns.map(turn => {
+      const bubble = document.createElement('p');
+      bubble.className = turn.role === 'user' ? 'from-owner' : 'from-clara';
+      bubble.textContent = `${turn.role === 'user' ? 'Tú' : 'Clara'}: ${turn.text}`;
+      return bubble;
+    }));
+    thread.scrollTop = thread.scrollHeight;
+  }
+  document.getElementById('claraTasks').replaceChildren(...(secretaryData.ownerTasks || []).map(task => {
+    const li = document.createElement('li');
+    li.textContent = `Pendiente · ${task.text}`;
+    const test = document.createElement('button');
+    test.className = 'btn btn-chip';
+    test.textContent = 'Probar como llamada al restaurante';
+    test.onclick = () => {
+      const panel = document.getElementById('restaurantTest');
+      panel.open = true;
+      const input = document.getElementById('rtTask');
+      if (!input.disabled) input.value = task.text;
+      panel.scrollIntoView({block:'center'});
+    };
+    li.append(' ', test);
+    return li;
+  }));
   const reservations = secretaryData.reservations || [];
   const appointments = secretaryData.appointments || [];
   const messages = secretaryData.messages || [];
@@ -838,7 +866,7 @@ if (addAppointmentBtn) {
     const title = prompt('Motivo de la cita:');
     if (!title) return;
     const withPerson = prompt('¿Con quién es la cita?:') || '';
-    const date = prompt('Fecha de la cita:', 'Jueves 19/11/2026') || '';
+    const date = prompt('Fecha de la cita (AAAA-MM-DD):', '') || '';
     const time = prompt('Hora:', '11:30') || '';
     const phone = prompt('Teléfono:', '') || '';
     const notes = prompt('Notas adicionales:', '') || '';
@@ -1107,6 +1135,12 @@ function stopWebMicSession(notifyServer = true) {
 // Settings Modal Handlers
 // ============================================================================
 openSettingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
+if (location.hash === '#ajustes') openSettingsBtn.click();
+if (location.hash === '#restaurantTest') {
+  const simulation = document.getElementById('restaurantTest');
+  simulation.open = true;
+  simulation.scrollIntoView();
+}
 closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
 cancelSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
 
@@ -1174,3 +1208,61 @@ document.getElementById('disconnectGoogleCalBtn')?.addEventListener('click', asy
 // Boot
 loadInitialState();
 connectDashboardWebSocket();
+// Captura de encargos del propietario, independiente de las llamadas entrantes.
+{
+  const form = document.getElementById('claraForm');
+  const text = document.getElementById('claraText');
+  const feedback = document.getElementById('claraFeedback');
+  const mic = document.getElementById('claraMic');
+  const submit = form.querySelector('[type="submit"]');
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (Recognition) {
+    const recognition = new Recognition();
+    recognition.lang = 'es-ES';
+    mic.hidden = false;
+    mic.onclick = () => {
+      try {
+        recognition.start();
+        mic.disabled = submit.disabled = true;
+        feedback.textContent = 'Te escucho. Di tu encargo.';
+      } catch {
+        feedback.textContent = 'No se pudo iniciar el dictado. Puedes escribir el encargo.';
+      }
+    };
+    recognition.onresult = event => {
+      text.value = [text.value.trim(), event.results[0][0].transcript].filter(Boolean).join(' ');
+      feedback.textContent = 'Revisa el mensaje y pulsa Enviar.';
+    };
+    recognition.onerror = () => { feedback.textContent = 'No se pudo dictar. Puedes escribir el encargo.'; };
+    recognition.onend = () => { mic.disabled = submit.disabled = false; };
+  }
+  text.onkeydown = event => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+  };
+  form.onsubmit = async event => {
+    event.preventDefault();
+    if (submit.disabled || !text.value.trim()) return;
+    submit.disabled = mic.disabled = text.disabled = true;
+    try {
+      feedback.textContent = 'Clara está escribiendo…';
+      const response = await fetch('/api/clara/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.value.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error);
+      secretaryData = result.secretaryData;
+      renderSecretaryHub();
+      text.value = '';
+      feedback.textContent = '';
+    } catch (error) {
+      feedback.textContent = error.message || 'No se pudo enviar el mensaje.';
+    } finally {
+      submit.disabled = mic.disabled = text.disabled = false;
+      text.focus();
+    }
+  };
+}
