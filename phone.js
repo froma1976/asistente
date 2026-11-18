@@ -21,6 +21,7 @@ function createPhone(getConfig, save, currentCall, invoices) {
     return {key, xml:`<Response><Connect><Stream url="${origin().replace(/^https:/,'wss:')}/twilio/stream/${key}"/></Connect></Response>`};
   }
   const busy = () => currentCall()?.status === 'screening' || dialing || tickets.size > 0;
+  const draining = () => process.env.CLARA_DATA_DIR && require('node:fs').existsSync(require('node:path').join(process.env.CLARA_DATA_DIR,'.deploying'));
   return {
     password: process.env.CLARA_PASSWORD ? '(la de CLARA_PASSWORD)' : password,
     authorized(req) {
@@ -49,11 +50,11 @@ function createPhone(getConfig, save, currentCall, invoices) {
         const sig = crypto.createHmac('sha1',cfg.twilioAuthToken).update(signed).digest('base64');
         if (!equal(sig,req.headers['x-twilio-signature'] || '')) return send(403,{});
         res.writeHead(200, {'Content-Type':'text/xml'});
-        return res.end(busy() || !cfg.geminiApiKey ? '<Response><Reject reason="busy"/></Response>' : stream({number:params.get('From'), goal:''}).xml);
+        return res.end(busy() || draining() || !cfg.geminiApiKey ? '<Response><Reject reason="busy"/></Response>' : stream({number:params.get('From'), goal:''}).xml);
       }
       if (path === '/api/phone' && req.method === 'GET') {
         const c = currentCall();
-        return send(200, {context:cfg.lifeContext || '', invoices:invoices(), missing, call:c && {status:c.status, number:c.fromNumber, transcript:c.transcript.slice(-8)}});
+        return send(200, {busy:busy(), context:cfg.lifeContext || '', invoices:invoices(), missing, call:c && {status:c.status, number:c.fromNumber, transcript:c.transcript.slice(-8)}});
       }
       if (req.method !== 'POST') return send(405,{});
       let data;
@@ -68,6 +69,7 @@ function createPhone(getConfig, save, currentCall, invoices) {
         return send(400,{error:'Indica el teléfono con prefijo internacional y el motivo.'});
       if (missing.length) return send(503,{error:'Falta: '+missing.join(', ')+'.'});
       if (busy()) return send(409,{error:'Ya hay una llamada en curso.'});
+      if (draining()) return send(503,{error:'Clara se está actualizando. Vuelve a intentarlo en unos segundos.'});
       dialing = true;
       const s = stream({number:data.number, goal:data.goal.trim()});
       try {

@@ -1,4 +1,29 @@
 const byId = id => document.getElementById(id);
+async function loadCalendar() {
+  const box=byId('appointments');
+  try {
+    const res=await fetch('/api/google-calendar/events',{cache:'no-store'});
+    if(!res.ok) throw Error();
+    const data=await res.json();
+    if(data.error) throw Error();
+    if(!data.connected || !data.events.length) {
+      box.textContent=data.connected?'No hay próximas citas.':'Conecta Google Calendar para ver tus citas aquí.';
+      return;
+    }
+    const list=document.createElement('ul');
+    for(const ev of data.events) {
+      const day=/^\d{4}-\d{2}-\d{2}$/.test(ev.start);
+      const date=new Date(day?ev.start+'T12:00:00Z':ev.start);
+      const time=date.toLocaleString('es-ES',{timeZone:'Europe/Madrid',dateStyle:'medium',...(!day&&{timeStyle:'short'})});
+      const li=document.createElement('li');
+      li.textContent=`${time}${day?' · Todo el día':''} — ${ev.summary}`;
+      list.append(li);
+    }
+    box.replaceChildren(list);
+  } catch {box.textContent='No se ha podido leer el calendario.';}
+}
+loadCalendar();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadCalendar();});
 const sheet = byId('sheet'), notice = byId('notice'), mic = byId('mic'), goal = byId('goal');
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition;

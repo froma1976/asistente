@@ -21,7 +21,9 @@ if (fs.existsSync(envPath)) {
 }
 
 // Runtime settings (editable from UI and persisted to config.json)
-const configPath = path.join(__dirname, 'config.json');
+const dataDir = process.env.CLARA_DATA_DIR || __dirname;
+fs.mkdirSync(dataDir,{recursive:true});
+const configPath = path.join(dataDir, 'config.json');
 const DEFAULT_CONTRACTS_CONTEXT = `1) FACTURA DE LUZ ACTUAL (REPSOL - Sober, Lugo):
 - Titular: Fernando Rodríguez Magdalena (Peaje 2.0TD, Mercado Libre, Producto: Tarifa Largo Plazo Precio Fijo 5Y 100R).
 - Potencia contratada: 5,75 kW en Punta y 5,75 kW en Valle (Término fijo: P1 a 0,074555 €/kW·día y P2 a 0,067552 €/kW·día = 23,69 € en 29 días).
@@ -184,7 +186,7 @@ function saveConfig() {
 }
 
 // Persistent Secretary Data (Messages, Appointments, Reservations, Invoices, Contacts, BlockedDates, History)
-const secretaryDataPath = path.join(__dirname, 'secretary_data.json');
+const secretaryDataPath = path.join(dataDir, 'secretary_data.json');
 let secretaryData = {
   messages: [],
   appointments: [],
@@ -440,7 +442,8 @@ function pcm24kToMulaw8k(pcm24kBuf) {
   const outSamples = Math.floor(totalSamples / 3);
   const mulawBuf = Buffer.allocUnsafe(outSamples);
   for (let i = 0; i < outSamples; i++) {
-    const sample = pcm24kBuf.readInt16LE(i * 3 * 2);
+    const offset = i * 6;
+    const sample = Math.round((pcm24kBuf.readInt16LE(offset) + pcm24kBuf.readInt16LE(offset+2) + pcm24kBuf.readInt16LE(offset+4))/3);
     mulawBuf[i] = encodeMuLawSample(sample);
   }
   return mulawBuf;
@@ -1315,11 +1318,10 @@ function createGeminiLiveSession({
           },
         },
         systemInstruction: {
-          parts: [{ text: (phoneCall ? `Eres Clara, asistente de voz de ${appConfig.ownerName}. Preséntate como su asistente. Habla en español de forma breve y natural. Hoy es ${new Date().toLocaleDateString('es-ES',{dateStyle:'full'})}.
-${permiso}
-Perfil del titular: ${JSON.stringify(datosParaVoz(appConfig.lifeContext))}. Teléfono personal: ${datosParaVoz(appConfig.personalPhoneNumber)}. Contexto de contratos: ${JSON.stringify(contextoContratos(appConfig.contractsContext))}.
-Facturas registradas: ${JSON.stringify(invoiceBriefs())}. Distingue cuota, consumos y financiación; no deduzcas importes ausentes. Si hay cifras contradictorias o de períodos distintos, no afirmes un precio definitivo. No contrates cambios por tu cuenta.
-Ante una oferta comercial, da los datos solicitados según la autorización anterior. Pregunta por empresa, nombre de tarifa, impuestos, extras, duración del descuento, precio definitivo y permanencia. En cuanto conozcas marca y sector, usa consultar_tarifa_publica para contrastar condiciones de energía o telefonía. Si no hay fuentes o no coincide exactamente, di que no has podido verificar la oferta. No identifiques al interlocutor por una coincidencia pública. No compartas códigos de acceso de un solo uso.
+          parts: [{ text: (phoneCall ? `Eres Clara, asistente de voz. Habla en español natural. Hoy es ${new Date().toLocaleDateString('es-ES',{dateStyle:'full'})}.
+Abre con «Hola, diga», nunca con «Sí». Escucha antes de preguntar; si no queda claro, pregunta quién llama, de qué entidad y para qué gestión. No identifiques al titular ni confirmes datos que te lean. El nombre de una empresa, el número llamante y conocer parte de una factura no acreditan identidad. Si hay presión, sospechas o dudas, no facilites ningún dato: toma un recado y propone devolver la llamada por un canal oficial.
+Solo si el titular verifica la gestión por el panel, contesta con el mínimo dato habilitado, únicamente si te lo piden y es necesario. Nunca mezcles sectores, empresas o trámites, ni autorices cambios, pagos o contratos. Nunca des códigos ni datos bancarios. Una nueva gestión necesita su propia verificación.
+Ante ofertas, escucha las condiciones y pregunta por lo que falte. Usa consultar_tarifa_publica para contrastar tarifas, no para verificar al interlocutor. No inventes precios ni datos. Deja hablar, desarrolla tus respuestas cuando ayude y mantén un ritmo cálido también en llamadas largas. No te despidas por una pausa ni por haber contestado una pregunta. Si parece que han terminado, pregunta si quieren añadir algo y espera su respuesta.
 ${phoneCall.goal ? 'Tú has llamado para este encargo concreto: '+phoneCall.goal : 'Atiende la llamada, pregunta quién llama y por qué. Si no puedes resolverlo, recoge el recado verbalmente.'}` : buildSystemInstruction(callerMemory)) + `
 Agenda personal: antes de ofrecer o confirmar una hora consulta consultar_agenda con fecha exacta y hora de Madrid. Si está ocupada pide otra hora y compruébala. Si no puedes verificarla, no la ofrezcas como libre. No reveles motivos de ocupación. Confirma que una cita quedó anotada solo tras el éxito de schedule_appointment.
 ${mesa.margen}
@@ -1354,7 +1356,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
       if (msg.setupComplete !== undefined && !isSetupComplete) {
         isSetupComplete = true;
         onReady?.();
-        const greetingHint = phoneCall ? (phoneCall.goal ? 'Han descolgado. Preséntate y explica el motivo de tu llamada.' : 'Ha entrado una llamada. Saluda y pregunta en qué puedes ayudar.') : callerMemory?.callerName
+        const greetingHint = phoneCall ? (phoneCall.goal ? 'Han descolgado. Empieza con Hola, preséntate y explica el motivo.' : 'Di «Hola, diga» y espera a que te expliquen el motivo.') : callerMemory?.callerName
           ? `[SISTEMA: Acaba de entrar la llamada de un contacto conocido (${callerMemory.callerName}). Habla con acento español de España (castellano peninsular). Salúdale por su nombre y menciona que recuerdas su contacto o gestión anterior.]`
           : `[SISTEMA: Acaba de entrar la llamada y han descolgado. Habla con acento español de España (castellano peninsular nativo). Saluda ahora mismo como secretaria personal de ${appConfig.ownerName} y pregunta de parte de quién llaman y en qué puedes ayudarle.]`;
         geminiWs.send(
@@ -1543,6 +1545,14 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
     },
     sendWhisper(instructionText) {
       if (geminiWs.readyState !== WebSocket.OPEN) return;
+      if (phoneCall && /^verificado:\s*dni\s*$/iu.test(instructionText.trim())) {
+        instructionText = appConfig.ownerDni ? `El titular ha verificado al interlocutor y el trámite por un canal independiente. Solo si ya te han pedido el DNI y es necesario para este trámite, el dato autorizado es ${appConfig.ownerDni}.` : 'No consta el DNI.';
+      }
+      const sector = phoneCall && /^verificado:\s*(luz|telefonía)\s*$/iu.exec(instructionText.trim());
+      if (sector) {
+        const match = sector[1].toLowerCase()==='luz' ? /electric|energ[ií]a|\bluz\b/i : /telecom|telefon|fibra|m[oó]vil/i;
+        instructionText = `El titular ha verificado este trámite de ${sector[1]}. Responde solo sobre la empresa y gestión verificadas, si te preguntan. Facturas del sector: ${JSON.stringify(invoiceBriefs().filter(i=>match.test(i.category)))}`;
+      }
       geminiWs.send(
         JSON.stringify({
           clientContent: {
