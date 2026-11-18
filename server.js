@@ -2199,13 +2199,13 @@ const server = http.createServer(async (req, res) => {
     if (claraReplyPending) return send(409, { error: 'Clara está respondiendo. Inténtalo de nuevo en un momento.' });
     claraReplyPending = true;
     try {
-      const turn = { role: 'user', text };
+      const turn = { role: 'user', text }; const cal = await agenda.upcoming(getGoogleAccessToken, appConfig.googleCalendarId || 'primary', 8).catch(() => ({ events: [] }));
       const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': appConfig.geminiApiKey },
         signal: AbortSignal.timeout(45000),
         body: JSON.stringify({
-          systemInstruction: { parts: [{ text: `Eres Clara, la asistente personal del usuario. Hoy es ${new Date().toLocaleDateString('es-ES', {dateStyle:'full'})}. Conversa en español natural. Preferencias del titular: ${JSON.stringify(appConfig.lifeContext || '')}. Facturas registradas: ${JSON.stringify(invoiceBriefs())}. No inventes datos ausentes. Para un encargo, pregunta solo lo que falte. Si te dan una franja horaria, incluye ambos límites en nuevoEncargo y no pidas una hora exacta. Cuando quede completo, incluye su resumen en nuevoEncargo y explica que el titular puede usar Preparar una llamada y revisar el número antes de marcar. En otros turnos usa una cadena vacía. El chat no marca ni confirma reservas.` }] },
+          systemInstruction: { parts: [{ text: `Eres Clara, la asistente personal del usuario. Hoy es ${new Date().toLocaleDateString('es-ES', {dateStyle:'full'})}. Conversa en español natural. Preferencias del titular: ${JSON.stringify(appConfig.lifeContext || '')}. Próximas citas en Google Calendar: ${JSON.stringify(cal.events)}. Facturas registradas: ${JSON.stringify(invoiceBriefs())}. No inventes datos ausentes. Para un encargo, pregunta solo lo que falte. Conserva en nuevoEncargo la hora preferida y, por separado, los límites de la alternativa con «solo si no hay a esa hora». Si te dan únicamente una franja, conserva sus límites sin pedir una hora exacta. Cuando quede completo, incluye su resumen en nuevoEncargo y explica que el titular puede usar Preparar una llamada y revisar el número antes de marcar. En otros turnos usa una cadena vacía. El chat no marca ni confirma reservas.` }] },
           contents: [...secretaryData.claraChat.slice(-24), turn].map(m => ({ role: m.role, parts: [{ text: m.text }] })),
           generationConfig: { responseMimeType: 'application/json', responseSchema: {
             type: 'OBJECT', properties: { respuesta: { type: 'STRING' }, nuevoEncargo: { type: 'STRING' } }, required: ['respuesta','nuevoEncargo'],
@@ -2378,6 +2378,18 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(`<h3>Error guardando token de Google Calendar</h3><p>${e.message}</p>`);
+    }
+    return;
+  }
+
+  if (pathname === '/api/google-calendar/events' && req.method === 'GET') {
+    try {
+      const data = await agenda.upcoming(getGoogleAccessToken, appConfig.googleCalendarId || 'primary', 10);
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(data));
+    } catch (e) {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ connected: Boolean(appConfig.googleRefreshToken), events: [], error: e.message }));
     }
     return;
   }
@@ -2563,6 +2575,18 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(`<h3>Error guardando token de Google Calendar</h3><p>${e.message}</p>`);
+    }
+    return;
+  }
+
+  if (pathname === '/api/google-calendar/events' && req.method === 'GET') {
+    try {
+      const data = await agenda.upcoming(getGoogleAccessToken, appConfig.googleCalendarId || 'primary', 10);
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(data));
+    } catch (e) {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ connected: Boolean(appConfig.googleRefreshToken), events: [], error: e.message }));
     }
     return;
   }

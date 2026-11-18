@@ -19,4 +19,20 @@ async function check({date,time},getToken,id='primary',request=fetch) {
     return {estado:c.busy.length?'ocupado':'libre',date,time,duracionMinutos:60};
   } catch {return {estado:'sin_verificar',motivo:'Comprueba la fecha, la hora y la conexión con Calendar.'};}
 }
-module.exports={tool,range,check};
+async function upcoming(getToken,id='primary',maxResults=10,request=fetch) {
+  const token=await getToken();
+  if(!token) return {connected:false,events:[]};
+  const url=`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(id)}/events?timeMin=${encodeURIComponent(new Date().toISOString())}&maxResults=${maxResults}&singleEvents=true&orderBy=startTime`;
+  const r=await request(url,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});
+  if(!r.ok) throw Error('No se pudo leer Google Calendar.');
+  const data=await r.json();
+  const events=(data.items||[]).map(ev=>({
+    id:ev.id,
+    summary:ev.summary||'Sin título',
+    start:ev.start?.dateTime||ev.start?.date||'',
+    location:ev.location||'',
+    htmlLink:ev.htmlLink||'',
+  }));
+  return {connected:true,events};
+}
+module.exports={tool,range,check,upcoming};

@@ -70,6 +70,27 @@ async function refresh() {
       return item;
     }));
     lastInvoices=signature;
+    const calRes = await fetch('/api/google-calendar/events');
+    if (calRes.ok && el('calendarStatus') && el('calendarEvents')) {
+      const cal = await calRes.json();
+      if (!cal.connected) {
+        el('calendarStatus').innerHTML = 'Google Calendar no está conectado. <a href="/api/google-calendar/auth">Conectar ahora</a>';
+        el('calendarEvents').replaceChildren();
+      } else if (!cal.events?.length) {
+        el('calendarStatus').textContent = 'Google Calendar conectado · No hay próximas citas.';
+        el('calendarEvents').replaceChildren();
+      } else {
+        el('calendarStatus').textContent = `Google Calendar conectado · ${cal.events.length} próxima(s) cita(s):`;
+        el('calendarEvents').replaceChildren(...cal.events.map(ev => {
+          const item = document.createElement('details'), summary = document.createElement('summary'), info = document.createElement('pre');
+          const when = ev.start ? new Date(ev.start).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: ev.start.includes('T') ? 'short' : undefined }) : '';
+          summary.textContent = `${when} · ${ev.summary}`;
+          info.textContent = [ev.location ? `Lugar: ${ev.location}` : '', ev.htmlLink ? `Enlace: ${ev.htmlLink}` : ''].filter(Boolean).join('\n') || 'Evento sincronizado en Google Calendar';
+          item.append(summary, info);
+          return item;
+        }));
+      }
+    }
   } catch { el('connection').textContent = 'No se pudo leer el estado del teléfono.'; }
 }
 el('dial').onsubmit = async e => {
