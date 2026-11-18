@@ -189,6 +189,27 @@ function applyConfigToUI(cfg) {
   document.getElementById('cfgTwilioSid').value = cfg.twilioAccountSid || '';
   document.getElementById('cfgTwilioToken').value = cfg.twilioAuthToken || '';
   updateGsmForwardingCodes(cfg.twilioPhoneNumber || '');
+
+  const gClientIdEl = document.getElementById('cfgGoogleClientId');
+  if (gClientIdEl) gClientIdEl.value = cfg.googleClientId || '';
+  const gSecretEl = document.getElementById('cfgGoogleClientSecret');
+  if (gSecretEl) gSecretEl.value = cfg.googleClientSecret || '';
+  const gCalIdEl = document.getElementById('cfgGoogleCalendarId');
+  if (gCalIdEl) gCalIdEl.value = cfg.googleCalendarId || 'primary';
+
+  const gBadge = document.getElementById('googleCalStatusBadge');
+  const gDisconnectBtn = document.getElementById('disconnectGoogleCalBtn');
+  if (gBadge) {
+    if (cfg.googleCalendarConnected) {
+      gBadge.textContent = '🟢 Conectado';
+      gBadge.style.color = '#10b981';
+      gDisconnectBtn?.classList.remove('hidden');
+    } else {
+      gBadge.textContent = '⚪ Sin conectar';
+      gBadge.style.color = 'var(--muted)';
+      gDisconnectBtn?.classList.add('hidden');
+    }
+  }
 }
 
 function updateGsmForwardingCodes(rawPhone) {
@@ -1112,6 +1133,9 @@ settingsForm.addEventListener('submit', async (e) => {
     twilioPhoneNumber: (document.getElementById('cfgTwilioPhone')?.value || '').trim(),
     twilioAccountSid: document.getElementById('cfgTwilioSid').value.trim(),
     twilioAuthToken: document.getElementById('cfgTwilioToken').value.trim(),
+    googleClientId: (document.getElementById('cfgGoogleClientId')?.value || '').trim(),
+    googleClientSecret: (document.getElementById('cfgGoogleClientSecret')?.value || '').trim(),
+    googleCalendarId: (document.getElementById('cfgGoogleCalendarId')?.value || '').trim() || 'primary',
   };
 
   const res = await fetch('/api/config', {
@@ -1124,6 +1148,27 @@ settingsForm.addEventListener('submit', async (e) => {
     applyConfigToUI(data.config);
     settingsModal.classList.add('hidden');
   }
+});
+
+document.getElementById('connectGoogleCalBtn')?.addEventListener('click', async () => {
+  const googleClientId = (document.getElementById('cfgGoogleClientId')?.value || '').trim();
+  const googleClientSecret = (document.getElementById('cfgGoogleClientSecret')?.value || '').trim();
+  const googleCalendarId = (document.getElementById('cfgGoogleCalendarId')?.value || '').trim() || 'primary';
+  if (!googleClientId || !googleClientSecret) {
+    alert('Introduce primero tu Google Client ID y Google Client Secret.');
+    return;
+  }
+  await fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ googleClientId, googleClientSecret, googleCalendarId }),
+  });
+  window.location.href = '/api/google-calendar/auth';
+});
+
+document.getElementById('disconnectGoogleCalBtn')?.addEventListener('click', async () => {
+  await fetch('/api/google-calendar/disconnect', { method: 'POST' });
+  await loadInitialState();
 });
 
 // Boot

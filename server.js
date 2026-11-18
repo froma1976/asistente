@@ -150,6 +150,10 @@ let appConfig = {
   twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
   twilioPhoneNumber: process.env.TWILIO_PHONE_NUMBER || '',
   publicWebhookUrl: process.env.PUBLIC_WEBHOOK_URL || '',
+  googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+  googleRefreshToken: process.env.GOOGLE_REFRESH_TOKEN || '',
+  googleCalendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
 };
 
 if (fs.existsSync(configPath)) {
@@ -807,6 +811,109 @@ function addMessageRecord({ callerName, phone, subject, message, urgency }) {
   return item;
 }
 
+/**
+ * Exchanges the stored Google OAuth refresh token for a fresh access token.
+ * @returns {Promise<string|null>}
+ */
+async function getGoogleAccessToken() {
+  if (!appConfig.googleClientId || !appConfig.googleClientSecret || !appConfig.googleRefreshToken) {
+    return null;
+  }
+  const params = new URLSearchParams({
+    client_id: appConfig.googleClientId,
+    client_secret: appConfig.googleClientSecret,
+    refresh_token: appConfig.googleRefreshToken,
+    grant_type: 'refresh_token',
+  });
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Google OAuth token refresh failed (${res.status}): ${errText}`);
+  }
+  const data = await res.json();
+  return data.access_token || null;
+}
+
+/**
+ * Builds start/end ISO datetimes in Europe/Madrid from appointment date and time strings.
+ */
+function buildGoogleCalendarDateRange(dateStr, timeStr) {
+  const dateMatch = String(dateStr || '').match(/(\d{4})-(\d{2})-(\d{2})/);
+  const baseDate = dateMatch
+    ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`
+    : new Date().toISOString().slice(0, 10);
+
+  const timeMatch = String(timeStr || '').match(/(\d{1,2}):(\d{2})/);
+  const hour = timeMatch ? Math.min(23, Math.max(0, Number(timeMatch[1]))) : 10;
+  const minute = timeMatch ? Math.min(59, Math.max(0, Number(timeMatch[2]))) : 0;
+
+  const pad = (n) => String(n).padStart(2, '0');
+  const endHour = (hour + 1) % 24;
+  const startLocal = `${baseDate}T${pad(hour)}:${pad(minute)}:00`;
+
+  let endDate = baseDate;
+  if (hour === 23) {
+    const next = new Date(`${baseDate}T00:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    endDate = next.toISOString().slice(0, 10);
+  }
+  const endLocal = `${endDate}T${pad(endHour)}:${pad(minute)}:00`;
+
+  return {
+    start: { dateTime: startLocal, timeZone: 'Europe/Madrid' },
+    end: { dateTime: endLocal, timeZone: 'Europe/Madrid' },
+  };
+}
+
+/**
+ * Creates a Google Calendar event for a scheduled appointment when OAuth is connected.
+ */
+async function syncAppointmentToGoogleCalendar(item) {
+  const accessToken = await getGoogleAccessToken();
+  if (!accessToken) return null;
+
+  const calendarId = encodeURIComponent(appConfig.googleCalendarId || 'primary');
+  const { start, end } = buildGoogleCalendarDateRange(item.date, item.time);
+  const descriptionParts = [
+    `Persona/Entidad: ${item.withPerson}`,
+    `Teléfono: ${item.phone}`,
+    item.notes ? `Notas: ${item.notes}` : '',
+    'Agendado automáticamente por tu Asistente IA',
+  ].filter(Boolean);
+
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      summary: item.title,
+      location: item.locationOrChannel || '',
+      description: descriptionParts.join('\n'),
+      start,
+      end,
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Google Calendar event creation failed (${res.status}): ${errText}`);
+  }
+
+  const created = await res.json();
+  item.googleEventId = created.id || null;
+  item.googleEventLink = created.htmlLink || null;
+  saveSecretaryData();
+  appendTranscriptChunk('system', `📆 Sincronizado en Google Calendar: ${item.title}`);
+  broadcastSecretaryUpdate(`Cita sincronizada en Google Calendar: ${item.title}`);
+  return created;
+}
+
 function addAppointmentRecord({ title, withPerson, phone, date, time, locationOrChannel, notes }) {
   const item = {
     id: 'apt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
@@ -840,6 +947,11 @@ function addAppointmentRecord({ title, withPerson, phone, date, time, locationOr
   sendTelegramNotification(
     `📅 <b>Nueva Cita Agendada en tu Calendario</b>\n📌 <b>Motivo:</b> ${item.title}\n👤 <b>Con:</b> ${item.withPerson} (${item.phone})\n🕒 <b>Cuándo:</b> ${item.date} a las ${item.time}\n📍 <b>Lugar:</b> ${item.locationOrChannel}\n📝 <b>Notas:</b> ${item.notes || '—'}`
   );
+  if (appConfig.googleRefreshToken) {
+    syncAppointmentToGoogleCalendar(item).catch((err) => {
+      console.error('Error sincronizando con Google Calendar:', err.message);
+    });
+  }
   return item;
 }
 
@@ -1942,6 +2054,8 @@ const server = http.createServer(async (req, res) => {
           hasApiKey: Boolean(appConfig.geminiApiKey),
           hasTwilio: Boolean(appConfig.twilioAccountSid && appConfig.twilioAuthToken),
           hasTelegram: Boolean(appConfig.telegramBotToken && appConfig.telegramChatId),
+          hasGoogleCalendar: Boolean(appConfig.googleClientId && appConfig.googleClientSecret),
+          googleCalendarConnected: Boolean(appConfig.googleRefreshToken),
         },
         templates: BUSINESS_TEMPLATES,
         activeCall: serializeCall(activeCall),
@@ -2012,6 +2126,8 @@ const server = http.createServer(async (req, res) => {
             hasApiKey: Boolean(appConfig.geminiApiKey),
             hasTwilio: Boolean(appConfig.twilioAccountSid && appConfig.twilioAuthToken),
             hasTelegram: Boolean(appConfig.telegramBotToken && appConfig.telegramChatId),
+            hasGoogleCalendar: Boolean(appConfig.googleClientId && appConfig.googleClientSecret),
+            googleCalendarConnected: Boolean(appConfig.googleRefreshToken),
           },
         })
       );
@@ -2019,6 +2135,77 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: e.message }));
     }
+    return;
+  }
+
+  // --- API: Google Calendar OAuth2 ---
+  if (pathname === '/api/google-calendar/auth' && req.method === 'GET') {
+    if (!appConfig.googleClientId || !appConfig.googleClientSecret) {
+      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<h3>Falta Google Client ID y Client Secret</h3><p>Guárdalos primero en Ajustes.</p>');
+      return;
+    }
+    const proto = req.headers['x-forwarded-proto'] || 'http';
+    const redirectUri = `${proto}://${req.headers.host}/api/google-calendar/callback`;
+    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    authUrl.searchParams.set('client_id', appConfig.googleClientId);
+    authUrl.searchParams.set('redirect_uri', redirectUri);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set(
+      'scope',
+      'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly'
+    );
+    authUrl.searchParams.set('access_type', 'offline');
+    authUrl.searchParams.set('prompt', 'consent');
+    res.writeHead(302, { Location: authUrl.toString() });
+    res.end();
+    return;
+  }
+
+  if (pathname === '/api/google-calendar/callback' && req.method === 'GET') {
+    const code = urlObj.searchParams.get('code');
+    const oauthErr = urlObj.searchParams.get('error');
+    if (oauthErr || !code) {
+      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`<h3>Error al conectar Google Calendar</h3><p>${oauthErr || 'Código no recibido'}</p>`);
+      return;
+    }
+    try {
+      const proto = req.headers['x-forwarded-proto'] || 'http';
+      const redirectUri = `${proto}://${req.headers.host}/api/google-calendar/callback`;
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: appConfig.googleClientId,
+          client_secret: appConfig.googleClientSecret,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code',
+        }).toString(),
+      });
+      const tokenData = await tokenRes.json();
+      if (!tokenRes.ok || !tokenData.refresh_token) {
+        throw new Error(tokenData.error_description || tokenData.error || 'No se recibió refresh_token');
+      }
+      appConfig.googleRefreshToken = tokenData.refresh_token;
+      saveConfig();
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(
+        `<html><body style="font-family:sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;"><div style="text-align:center;"><h2>✅ Google Calendar conectado</h2><p>Ya puedes volver al panel. Redirigiendo...</p><script>setTimeout(()=>location.href='/',1500);</script></div></body></html>`
+      );
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`<h3>Error guardando token de Google Calendar</h3><p>${e.message}</p>`);
+    }
+    return;
+  }
+
+  if (pathname === '/api/google-calendar/disconnect' && req.method === 'POST') {
+    appConfig.googleRefreshToken = '';
+    saveConfig();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
 
@@ -2119,6 +2306,8 @@ const server = http.createServer(async (req, res) => {
             hasApiKey: Boolean(appConfig.geminiApiKey),
             hasTwilio: Boolean(appConfig.twilioAccountSid && appConfig.twilioAuthToken),
             hasTelegram: Boolean(appConfig.telegramBotToken && appConfig.telegramChatId),
+            hasGoogleCalendar: Boolean(appConfig.googleClientId && appConfig.googleClientSecret),
+            googleCalendarConnected: Boolean(appConfig.googleRefreshToken),
           },
         })
       );
@@ -2126,6 +2315,77 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: e.message }));
     }
+    return;
+  }
+
+  // --- API: Google Calendar OAuth2 ---
+  if (pathname === '/api/google-calendar/auth' && req.method === 'GET') {
+    if (!appConfig.googleClientId || !appConfig.googleClientSecret) {
+      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<h3>Falta Google Client ID y Client Secret</h3><p>Guárdalos primero en Ajustes.</p>');
+      return;
+    }
+    const proto = req.headers['x-forwarded-proto'] || 'http';
+    const redirectUri = `${proto}://${req.headers.host}/api/google-calendar/callback`;
+    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    authUrl.searchParams.set('client_id', appConfig.googleClientId);
+    authUrl.searchParams.set('redirect_uri', redirectUri);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set(
+      'scope',
+      'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly'
+    );
+    authUrl.searchParams.set('access_type', 'offline');
+    authUrl.searchParams.set('prompt', 'consent');
+    res.writeHead(302, { Location: authUrl.toString() });
+    res.end();
+    return;
+  }
+
+  if (pathname === '/api/google-calendar/callback' && req.method === 'GET') {
+    const code = urlObj.searchParams.get('code');
+    const oauthErr = urlObj.searchParams.get('error');
+    if (oauthErr || !code) {
+      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`<h3>Error al conectar Google Calendar</h3><p>${oauthErr || 'Código no recibido'}</p>`);
+      return;
+    }
+    try {
+      const proto = req.headers['x-forwarded-proto'] || 'http';
+      const redirectUri = `${proto}://${req.headers.host}/api/google-calendar/callback`;
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: appConfig.googleClientId,
+          client_secret: appConfig.googleClientSecret,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code',
+        }).toString(),
+      });
+      const tokenData = await tokenRes.json();
+      if (!tokenRes.ok || !tokenData.refresh_token) {
+        throw new Error(tokenData.error_description || tokenData.error || 'No se recibió refresh_token');
+      }
+      appConfig.googleRefreshToken = tokenData.refresh_token;
+      saveConfig();
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(
+        `<html><body style="font-family:sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;"><div style="text-align:center;"><h2>✅ Google Calendar conectado</h2><p>Ya puedes volver al panel. Redirigiendo...</p><script>setTimeout(()=>location.href='/',1500);</script></div></body></html>`
+      );
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`<h3>Error guardando token de Google Calendar</h3><p>${e.message}</p>`);
+    }
+    return;
+  }
+
+  if (pathname === '/api/google-calendar/disconnect' && req.method === 'POST') {
+    appConfig.googleRefreshToken = '';
+    saveConfig();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
 

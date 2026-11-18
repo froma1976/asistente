@@ -383,6 +383,32 @@
           </div>
         </div>
 
+        <div class="form-section">
+          <h3>5. Google Calendar (Sincronización automática de citas)</h3>
+          <div class="form-row">
+            <label>
+              Google Client ID
+              <input type="text" id="cfgGoogleClientId" placeholder="123456-abc.apps.googleusercontent.com" />
+            </label>
+            <label>
+              Google Client Secret
+              <input type="password" id="cfgGoogleClientSecret" placeholder="GOCSPX-..." />
+            </label>
+          </div>
+          <label>
+            ID de Calendario (por defecto <code>primary</code>)
+            <input type="text" id="cfgGoogleCalendarId" placeholder="primary" />
+          </label>
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+            <button type="button" id="connectGoogleCalBtn" class="btn btn-secondary">📅 Conectar Google Calendar</button>
+            <button type="button" id="disconnectGoogleCalBtn" class="btn btn-secondary hidden">Desconectar</button>
+            <span id="googleCalStatusBadge" style="font-size:0.82rem; color:var(--muted);">⚪ Sin conectar</span>
+          </div>
+          <small style="color: var(--muted); font-size: 0.76rem; display:block; margin-top:6px;">
+            URI de redirección autorizada en Google Cloud Console: <code>http://localhost:3030/api/google-calendar/callback</code>
+          </small>
+        </div>
+
         <div class="modal-footer">
           <button type="button" id="cancelSettingsBtn" class="btn btn-secondary">Cancelar</button>
           <button type="submit" class="btn btn-primary">💾 Guardar Configuración</button>
