@@ -378,16 +378,34 @@ function mulaw8kToPcm16k(mulawBuf) {
 }
 
 // Downsample 24kHz 16-bit PCM Buffer (from Gemini output) -> 8kHz mu-law Buffer (for Twilio)
-function pcm24kToMulaw8k(pcm24kBuf) {
-  const totalSamples = Math.floor(pcm24kBuf.length / 2);
-  const outSamples = Math.floor(totalSamples / 3);
-  const mulawBuf = Buffer.allocUnsafe(outSamples);
-  for (let i = 0; i < outSamples; i++) {
-    const offset = i * 6;
-    const sample = Math.round((pcm24kBuf.readInt16LE(offset) + pcm24kBuf.readInt16LE(offset+2) + pcm24kBuf.readInt16LE(offset+4))/3);
-    mulawBuf[i] = encodeMuLawSample(sample);
+// Filtro paso bajo FIR (ventana de Hamming, corte 3,4 kHz) antes de diezmar: evita el aliasing que da voz metálica.
+const DOWNSAMPLE_TAPS = (() => {
+  const n = 31, fc = 3400 / 24000, taps = [];
+  for (let i = 0; i < n; i++) {
+    const m = i - (n - 1) / 2;
+    const sinc = m === 0 ? 2 * fc : Math.sin(2 * Math.PI * fc * m) / (Math.PI * m);
+    taps.push(sinc * (0.54 - 0.46 * Math.cos((2 * Math.PI * i) / (n - 1))));
   }
-  return mulawBuf;
+  const sum = taps.reduce((a, b) => a + b, 0);
+  return taps.map((t) => t / sum);
+})();
+// state (uno por llamada) conserva la cola entre fragmentos para que no haya chasquidos.
+function pcm24kToMulaw8k(pcm24kBuf, state = {}) {
+  const taps = DOWNSAMPLE_TAPS, history = taps.length - 1;
+  const total = Math.floor(pcm24kBuf.length / 2);
+  const samples = new Float64Array(history + total);
+  samples.set(state.tail || new Float64Array(history));
+  for (let i = 0; i < total; i++) samples[history + i] = pcm24kBuf.readInt16LE(i * 2);
+  const out = [];
+  let pos = history + (state.phase || 0);
+  for (; pos < samples.length; pos += 3) {
+    let acc = 0;
+    for (let k = 0; k < taps.length; k++) acc += taps[k] * samples[pos - k];
+    out.push(encodeMuLawSample(Math.max(-32768, Math.min(32767, Math.round(acc)))));
+  }
+  state.phase = pos - samples.length;
+  state.tail = samples.slice(samples.length - history);
+  return Buffer.from(out);
 }
 
 // ============================================================================
@@ -1221,6 +1239,7 @@ Mejoras de llamadas reales anteriores, solo cuando encajen en esta gestión: ${c
 
 function createGeminiLiveSession({
   phoneCall,
+  greeted,
   onReject,
   onKey,
   onCheck,
@@ -1243,7 +1262,8 @@ function createGeminiLiveSession({
     apiKey
   )}`;
 
-  const geminiWs = new WebSocket(wsUrl);
+  let geminiWs = null, liveReady = false, resumeHandle = null, reconnects = 0, closedByUs = false;
+  const pendingAudio = [];
   let isSetupComplete = false, checksMade=0;
   const contrastes=[];
   const registerTable=phoneCall?.simulated && phoneCall.goal ? makeTableRecorder() : null;
@@ -1257,34 +1277,49 @@ function createGeminiLiveSession({
     {name:'comparar_oferta',description:'Evalúa la propuesta escuchada usando las referencias públicas ya consultadas y las facturas comparables disponibles.',parameters:{type:'OBJECT',properties:{sector:{type:'STRING',enum:ofertas.sectores}},required:['sector']}}
   ];
 
-  geminiWs.addEventListener('open', () => {
+  const handleOpen = () => {
     const setupMessage = {
       setup: {
         model: 'models/gemini-3.8-live',
-        realtimeInputConfig: { activityHandling: 'NO_INTERRUPTION' },
+        realtimeInputConfig: {
+          automaticActivityDetection: {
+            startOfSpeechSensitivity: 'START_SENSITIVITY_LOW',
+            endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
+            prefixPaddingMs: 300,
+            silenceDurationMs: 600,
+          },
+        },
+        contextWindowCompression: { slidingWindow: {} },
+        sessionResumption: resumeHandle ? { handle: resumeHandle } : {},
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: {
             languageCode: 'es-ES',
             voiceConfig: {
               prebuiltVoiceConfig: {
-                voiceName: appConfig.voiceName === 'Aoede' || !appConfig.voiceName ? 'Sulafat' : appConfig.voiceName,
+                voiceName: claraVoice(),
               },
             },
           },
         },
         systemInstruction: {
           parts: [{ text: (phoneCall ? `Eres Clara, asistente de voz. Habla en español natural. Hoy es ${new Date().toLocaleDateString('es-ES',{dateStyle:'full'})}.
-Abre con «Hola, diga», nunca con «Sí». Escucha antes de preguntar; si no queda claro, pregunta quién llama, de qué entidad y para qué gestión. No identifiques al titular ni confirmes datos que te lean. El nombre de una empresa, el número llamante y conocer parte de una factura no acreditan identidad. Si hay presión, sospechas o dudas, no facilites ningún dato: toma un recado y propone devolver la llamada por un canal oficial.
+${greeted?'Ya has saludado al descolgar con «Hola, buenas, dígame». No repitas el saludo: espera y responde a lo que digan.':'Abre con «Hola, buenas, dígame», nunca con «Sí».'} Escucha antes de preguntar; si no queda claro, pregunta quién llama, de qué entidad y para qué gestión. No identifiques al titular ni confirmes datos que te lean. El nombre de una empresa, el número llamante y conocer parte de una factura no acreditan identidad. Si hay presión, sospechas o dudas, no facilites ningún dato: toma un recado y propone devolver la llamada por un canal oficial.
 La autorización previa del titular para comerciales se limita a dato_comercial_pedido. Para otros datos se requiere verificación por el panel. Nunca mezcles sectores, empresas o trámites, ni autorices cambios, pagos o contratos. Nunca des códigos ni datos bancarios.
 Ante ofertas, escucha las condiciones y pregunta por lo que falte. Usa consultar_tarifa_publica para contrastar tarifas, no para verificar al interlocutor. No inventes precios ni datos. Deja hablar, desarrolla tus respuestas cuando ayude y mantén un ritmo cálido también en llamadas largas. No te despidas por una pausa ni por haber contestado una pregunta. Si parece que han terminado, pregunta si quieren añadir algo y espera su respuesta.
 ${buildClaraPhoneContext(phoneCall, callerMemory)}` : buildSystemInstruction(callerMemory)) + `
-Si el interlocutor empieza a hablar mientras respondes, termina tu explicación. Después atiende lo que haya dicho. Si el solapamiento impidió que te oyera o pide que lo repitas, repite la parte necesaria sin volver a ejecutar ninguna gestión.
+Si te interrumpen, calla y escucha, como haría una persona. Después responde a lo nuevo y retoma lo anterior solo si sigue haciendo falta, sin repetir ninguna gestión. Un «ajá», «vale» o «sí, sí» mientras hablas no es una interrupción: sigue con naturalidad.
 Eres Clara, asistente virtual; si te preguntan, dilo con naturalidad. Haz una sola pregunta cada vez y pide repetir solo la parte dudosa. Para un comercial que ya dijo nombre, empresa y producto, pregunta por la primera condición que falte, por ejemplo el precio final. No repitas lo que ya sabes. Humor solo si encaja; nunca en urgencias, duelo o enfado. Si hay peligro inmediato, orienta a emergencias.
-Separa recado guardado, aviso enviado y cita anotada. No prometas ninguna acción antes del resultado. Con message_not_saved explica que el recado no se guardó. Si se guardó pero Telegram no está confirmado, di «He guardado el recado, pero no puedo confirmar que le haya llegado el aviso». Un aviso enviado tampoco significa que lo haya leído.
+Separa recado guardado, aviso enviado y cita anotada. No prometas ninguna acción antes del resultado. Con message_not_saved explica que el recado no se guardó. Si se guardó pero el aviso no consta como enviado, dilo con naturalidad, por ejemplo «Te lo dejo apuntado; lo verá en cuanto mire los recados». Un aviso enviado tampoco significa que lo haya leído.
 Agenda personal: antes de ofrecer o confirmar una hora consulta consultar_agenda con fecha exacta y hora de Madrid. Si está ocupada pide otra hora y compruébala. Si no puedes verificarla, no la ofrezcas como libre. No reveles motivos de ocupación. Confirma que una cita quedó anotada solo tras el éxito de schedule_appointment.
 ${mesa.margen}
 ${registerTable?'Cuando recepción confirme explícitamente la mesa, registra la fecha y hora exactas acordadas con registrar_mesa_confirmada antes de despedirte. Una hora alternativa autorizada y confirmada también se registra. No registres una mera oferta o una negativa. El evento y el aviso son de prueba.':''}
+Quién eres: Clara, la asistente que atiende las llamadas de ${appConfig.ownerName}. Cálida, despierta y resolutiva, con un punto de picardía amable. Hablas como una persona de España al teléfono, no como un menú: frases cortas, registro adaptado (tú con quien te tutea, usted con personas mayores o formales). Nada de «¿En qué puedo ayudarle el día de hoy?», «su solicitud ha sido procesada» ni enumerar lo que sabes hacer.
+Ejemplos de tono (orientativos, no los recites):
+- «¿Está ${appConfig.ownerName}?» → «Ahora mismo no puede ponerse. ¿Quieres que le deje algún recado?»
+- «Era por lo del coche.» → «Vale, por el coche. ¿Le digo que te llame?»
+- «¿Eres una máquina?» → «Soy Clara, su asistente virtual. Pero cuéntame, ¿qué necesitabas?»
+- «Le llamo para mejorarle la factura de la luz.» → «Vale. ¿Qué precio por kilovatio hora me dices, con impuestos?»
 Habla como en una conversación, con melodía y respiraciones discretas, no con la cadencia uniforme de quien lee un guion. Una idea por frase. Da énfasis a la palabra importante y deja caer la voz al terminar. Usa respuestas espontáneas cuando encajen, sin repetir muletillas.
 Ritmo al teléfono: deja terminar a quien habla y contesta directamente, en frases cortas. Si necesitas tiempo para comparar cifras, comprobar datos o hacer una gestión, empieza en voz alta con un aviso breve («Dame un segundo», «Un momentito, que lo miro») y continúa tú misma con la respuesta, sin esperar otro turno. Una sola vez por gestión. No anuncies esperas para respuestas sencillas ni finjas consultar algo a lo que no tienes acceso.
 Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaciones. Sé cálida por defecto. Si te gastan una broma amable, puedes seguirla o soltar una pequeña risa natural. Ante una preocupación, baja el ritmo y escucha sin bromear. Si te piden discreción, puedes susurrar manteniéndote inteligible. Si insisten tras un no, deja que se note la molestia con una frase corta y firme, sin gritar ni insultar. No fuerces estas reacciones.` }],
@@ -1295,9 +1330,9 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
       },
     };
     geminiWs.send(JSON.stringify(setupMessage));
-  });
+  };
 
-  geminiWs.addEventListener('message', async (event) => {
+  const handleMessage = async (event) => {
     try {
       let rawText;
       if (typeof event.data === 'string') {
@@ -1312,13 +1347,21 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
 
       const msg = JSON.parse(rawText);
 
+      if (msg.sessionResumptionUpdate?.resumable && msg.sessionResumptionUpdate.newHandle) resumeHandle = msg.sessionResumptionUpdate.newHandle;
+      if (msg.goAway) reconnect();
+      if (msg.setupComplete !== undefined) {
+        liveReady = true;
+        while (pendingAudio.length && geminiWs.readyState === WebSocket.OPEN) {
+          geminiWs.send(JSON.stringify({ realtimeInput: { audio: { data: pendingAudio.shift(), mimeType: 'audio/pcm;rate=16000' } } }));
+        }
+      }
       if (msg.setupComplete !== undefined && !isSetupComplete) {
         isSetupComplete = true;
         onReady?.();
-        const greetingHint = phoneCall ? (phoneCall.goal ? 'Han descolgado. Escucha si habla una persona o una centralita. Ante una persona, saluda y explica el encargo; ante una locución, espera a la pregunta y responde con la opción adecuada.' : 'Di «Hola, diga» y espera a que te expliquen el motivo.') : callerMemory?.callerName
+        const greetingHint = greeted ? null : phoneCall ? (phoneCall.goal ? 'Han descolgado. Escucha si habla una persona o una centralita. Ante una persona, saluda y explica el encargo; ante una locución, espera a la pregunta y responde con la opción adecuada.' : 'Di «Hola, buenas, dígame» y espera a que te expliquen el motivo.') : callerMemory?.callerName
           ? `[SISTEMA: Acaba de entrar la llamada de un contacto conocido (${callerMemory.callerName}). Habla con acento español de España (castellano peninsular). Salúdale por su nombre y menciona que recuerdas su contacto o gestión anterior.]`
           : `[SISTEMA: Acaba de entrar la llamada y han descolgado. Habla con acento español de España (castellano peninsular nativo). Saluda ahora mismo como secretaria personal de ${appConfig.ownerName} y pregunta de parte de quién llaman y en qué puedes ayudarle.]`;
-        geminiWs.send(
+        if (greetingHint) geminiWs.send(
           JSON.stringify({
             clientContent: {
               turns: [
@@ -1544,19 +1587,41 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
     } catch (err) {
       console.error('Error procesando mensaje de Gemini Live:', err);
     }
-  });
+  };
 
-  geminiWs.addEventListener('error', (err) => {
-    onError?.(err.message || 'Error en conexión con Gemini 3.8 Live');
-  });
-
-  geminiWs.addEventListener('close', (ev) => {
-    onClose?.(ev.code, ev.reason);
-  });
+  // Reanuda la sesión de voz sin cortar la llamada (aviso goAway o caída de conexión).
+  const reconnect = () => {
+    if (closedByUs || !resumeHandle || reconnects >= 4) return false;
+    reconnects++;
+    const old = geminiWs;
+    connect();
+    try { old?.close(); } catch {}
+    return true;
+  };
+  const connect = () => {
+    const ws = new WebSocket(wsUrl);
+    geminiWs = ws;
+    liveReady = false;
+    ws.addEventListener('open', () => { if (ws === geminiWs) handleOpen(); });
+    ws.addEventListener('message', handleMessage);
+    ws.addEventListener('error', (err) => {
+      if (ws !== geminiWs) return;
+      if (!reconnect()) onError?.(err.message || 'Error en conexión con Gemini 3.8 Live');
+    });
+    ws.addEventListener('close', (ev) => {
+      if (ws !== geminiWs) return;
+      if (!reconnect()) onClose?.(ev.code, ev.reason);
+    });
+  };
+  connect();
 
   return {
     sendPcm16k(base64Pcm) {
-      if (geminiWs.readyState !== WebSocket.OPEN) return;
+      if (!liveReady || geminiWs.readyState !== WebSocket.OPEN) {
+        pendingAudio.push(base64Pcm);
+        if (pendingAudio.length > 500) pendingAudio.shift(); // máximo ~10 s
+        return;
+      }
       geminiWs.send(
         JSON.stringify({
           realtimeInput: {
@@ -1597,8 +1662,9 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
       );
     },
     close() {
+      closedByUs = true;
       try {
-        geminiWs.close();
+        geminiWs?.close();
       } catch {}
     },
   };
@@ -1846,6 +1912,28 @@ async function synthesizeSpeechPcm24k(text, voiceName = 'Aoede') {
     console.error('Error sintetizando voz TTS:', err.message);
     return null;
   }
+}
+
+// Saludo instantáneo: se sintetiza una vez y suena en cuanto se descuelga, mientras arranca la sesión de voz.
+const SALUDO_ENTRANTE = 'Hola, buenas, dígame.';
+function claraVoice() {
+  return appConfig.voiceName === 'Aoede' || !appConfig.voiceName ? 'Sulafat' : appConfig.voiceName;
+}
+let saludoCache = null;
+async function prepararSaludo() {
+  const voice = claraVoice();
+  if (saludoCache?.voice === voice) return saludoCache;
+  const tts = await synthesizeSpeechPcm24k(SALUDO_ENTRANTE, voice);
+  if (!tts?.base64Pcm24k) return null;
+  let pcm = Buffer.from(tts.base64Pcm24k, 'base64');
+  let start = 0;
+  while (start + 1 < pcm.length && Math.abs(pcm.readInt16LE(start)) < 600) start += 2;
+  start = Math.max(0, start - 1440); // deja 30 ms antes de la voz
+  pcm = pcm.subarray(start - (start % 2));
+  if (pcm.length < 19200 || pcm.length > 192000) return null; // descarta audios anómalos (menos de 0,4 s o más de 4 s)
+  saludoCache = { voice, pcm24k: pcm };
+  console.log('🔊 Saludo instantáneo de Clara preparado.');
+  return saludoCache;
 }
 
 async function speakAndAppendTranscript(role, text, voiceName) {
@@ -2873,8 +2961,10 @@ server.on('upgrade', (req, socket) => {
         const m = JSON.parse(raw);
         if (m.type === 'start' && !live) {
           if (!['in','out'].includes(m.mode) || (m.mode === 'out' && (typeof m.goal !== 'string' || !m.goal.trim() || m.goal.length > 2000))) return fail('Indica el motivo de la llamada.');
+          const rehearsalGreeting = m.mode === 'in' && saludoCache?.voice === claraVoice() ? saludoCache : null;
           live = createGeminiLiveSession({
             phoneCall:{simulated:true,goal:m.mode === 'out' ? m.goal : ''},
+            greeted: Boolean(rehearsalGreeting),
             onReady:() => {
               if (ws.readyState !== 1) return;
               ready = true;
@@ -2882,6 +2972,11 @@ server.on('upgrade', (req, socket) => {
                 fromNumber:m.mode === 'out' ? 'Simulación · Clara te llama' : 'Simulación · Tú llamas', transcript:[], status:'screening'};
               rehearsalCalls.set(record.id, record);
               send('ready');
+              if (rehearsalGreeting) {
+                send('audio', rehearsalGreeting.pcm24k.toString('base64'));
+                record.transcript.push({role:'assistant',text:SALUDO_ENTRANTE,updatedAt:Date.now(),timestamp:new Date().toLocaleTimeString('es-ES')});
+                send('transcript', record.transcript);
+              }
             },
             onTranscript:(role,text) => {
               if (!ready || !text) return;
@@ -3010,6 +3105,13 @@ server.on('upgrade', (req, socket) => {
             if(n){n.estado='revisar';saveSecretaryData();} // Solo una resolución explícita cierra la gestión.
           }
           call.twilioStreamSid = msg.start?.streamSid;
+          call.downsample = {};
+          const saludo = !phoneCall.goal && saludoCache?.voice === claraVoice() ? saludoCache : null;
+          if (saludo && call.twilioStreamSid && ws.readyState === 1) {
+            ws.send(JSON.stringify({ event: 'media', streamSid: call.twilioStreamSid, media: { payload: pcm24kToMulaw8k(saludo.pcm24k, call.downsample).toString('base64') } }));
+            appendTranscriptChunk('assistant', SALUDO_ENTRANTE);
+          }
+          prepararSaludo().catch(() => {});
 
           sendTelegramNotification(
             `📞 <b>${phoneCall.goal?'Llamada saliente de Clara':'Llamada entrante atendida por Clara'}</b>\n📱 ${call.fromNumber}\n${
@@ -3020,7 +3122,7 @@ server.on('upgrade', (req, socket) => {
           );
 
           call.geminiSession = createGeminiLiveSession({
-            phoneCall, callerMemory: call.callerMemory,
+            phoneCall, greeted: Boolean(saludo), callerMemory: call.callerMemory,
             onKey:phoneCall.goal?(key)=>{
               if(activeCall!==call||call.status!=='screening'||ws.readyState!==1||!call.twilioStreamSid||
                 typeof key!=='string'||!/^[0-9*#]$/.test(key)||(call.keyCount||0)>=12||
@@ -3047,7 +3149,7 @@ server.on('upgrade', (req, socket) => {
               });
               if (!call.twilioStreamSid || ws.readyState !== 1) return;
               const pcm24kBuf = Buffer.from(base64Pcm24k, 'base64');
-              const mulaw8kBuf = pcm24kToMulaw8k(pcm24kBuf);
+              const mulaw8kBuf = pcm24kToMulaw8k(pcm24kBuf, call.downsample);
               ws.send(
                 JSON.stringify({
                   event: 'media',
@@ -3095,6 +3197,7 @@ server.on('upgrade', (req, socket) => {
 
 const PORT = Number(process.env.PORT || 3030);
 server.listen(PORT, () => {
+  prepararSaludo().catch(() => {});
   console.log(`\n=============================================================`);
   console.log(`🛡️  Asistente Personal de Filtrado de Llamadas (Gemini 3.8 Live)`);
   console.log(`🌐 Panel en Vivo: http://localhost:${PORT}`);
