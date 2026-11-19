@@ -65,13 +65,18 @@ function createPhone(getConfig, save, currentCall, invoices) {
         return send(200,{});
       }
       if (path !== '/api/phone/dial') return send(404,{});
+      return this.dial(data,send);
+    },
+    async dial(data,send,followId=null) {
+      const cfg=getConfig(),missing=[];
+      if(!cfg.geminiApiKey||!cfg.twilioAccountSid||!cfg.twilioAuthToken||!cfg.twilioPhoneNumber||!origin()) missing.push('configuración de llamadas');
       if (!/^\+[1-9]\d{6,14}$/.test(data?.number) || typeof data.goal !== 'string' || !data.goal.trim() || data.goal.length > 2000)
         return send(400,{error:'Indica el teléfono con prefijo internacional y el motivo.'});
       if (missing.length) return send(503,{error:'Falta: '+missing.join(', ')+'.'});
       if (busy()) return send(409,{error:'Ya hay una llamada en curso.'});
       if (draining()) return send(503,{error:'Clara se está actualizando. Vuelve a intentarlo en unos segundos.'});
       dialing = true;
-      const s = stream({number:data.number, goal:data.goal.trim()});
+      const s = stream({number:data.number, goal:data.goal.trim(),followId});
       try {
         const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(cfg.twilioAccountSid)}/Calls.json`, {
           method:'POST', headers:{Authorization:'Basic '+Buffer.from(`${cfg.twilioAccountSid}:${cfg.twilioAuthToken}`).toString('base64')},

@@ -2,4 +2,6 @@
 <body><main><header><h1>Transcripciones</h1><a href="/">Volver</a></header>
 <section><h2>En directo</h2><button type="button" id="take" hidden>Retomar la llamada</button><div id="transfer-status" role="status"></div><div id="live"></div><p id="notice" role="status"></p></section>
 <section><h2>Últimas 30 llamadas</h2><div id="past"></div></section>
+<section><h2>Seguimientos</h2><label><input type="checkbox" id="supervisar"> Estoy presente: permitir llamadas de seguimiento mientras veo el directo</label><p id="balance"></p><ul id="seguimientos"></ul></section>
+<form id="horario"><label>Desde (hora de Madrid) <input name="desde" type="number" min="0" max="23" required></label> <label>Hasta <input name="hasta" type="number" min="1" max="24" required></label> <button>Guardar horario de seguimientos</button><output></output></form>
 </main><script src="/transcripciones.js"></script></body></html>
