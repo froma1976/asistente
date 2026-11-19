@@ -7,7 +7,7 @@ Secretario personal de voz en tiempo real diseñado para **atender llamadas entr
 ## ✨ Características Principales
 
 1. **Voz en Tiempo Real de Baja Latencia (`models/gemini-3.8-live`)**:
-   - Conversación bidireccional en español con soporte nativo de interrupciones (*barge-in*).
+   - Conversación bidireccional en español: Clara termina su respuesta aunque la otra persona hable a la vez y puede repetir lo que no se haya oído.
    - Transcripción en directo tanto de lo que dice el interlocutor (`inputAudioTranscription`) como de lo que responde tu asistente (`outputAudioTranscription`).
 2. **Clasificación y Filtro Automático en Segundo Plano (`NON_BLOCKING`)**:
    - Herramienta asíncrona `classify_call` que rellena en vivo la ficha del interlocutor: **Nombre, Empresa, Categoría, Resumen, Nota de Interés (1-10) y Recomendación**.
