@@ -1,18 +1,13 @@
 const live=document.getElementById('live'), past=document.getElementById('past'), notice=document.getElementById('notice');
 let prevLive, prevHistory;
 const ultima=new URLSearchParams(location.search).has('ultima');
-const supervisar=document.getElementById('supervisar');
 const horario=document.getElementById('horario');
 horario.onsubmit=async e=>{
   e.preventDefault();
   const r=await fetch('/api/seguimientos/horario',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({desde:Number(horario.elements.desde.value),hasta:Number(horario.elements.hasta.value)})}).catch(()=>null);
   horario.querySelector('output').textContent=r?.ok?'Horario guardado.':'No se pudo guardar el horario.';
 };
-supervisar.checked=false;
-document.addEventListener('visibilitychange',()=>{if(document.hidden)supervisar.checked=false;});
 if(ultima) {
-  supervisar.disabled=true;
-  supervisar.parentElement.textContent='Para supervisar llamadas abre Transcripciones desde Inicio.';
   past.before(notice);
   past.previousElementSibling.previousElementSibling.textContent='Última llamada';
 }
@@ -25,15 +20,6 @@ take.onclick=async()=>{
   try {
     const r=await fetch('/api/call/transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'mobile',liveId:id})});
     const data=await r.json();
-    const counts=data.balance;
-    if(data.horario&&!horario.dataset.loaded){[horario.elements.desde.value,horario.elements.hasta.value]=data.horario;horario.dataset.loaded='1';}
-    if(counts)document.getElementById('balance').textContent=`Hoy: ${counts.resueltos} resueltos · ${counts.pendientes} pendientes · ${counts.revisar} necesitan tu decisión.`;
-    document.getElementById('seguimientos').replaceChildren(...(data.seguimientos||[]).map(n=>{
-      const li=document.createElement('li');li.textContent=`${n.asunto} · ${n.estado} · ${n.responsable} · ${n.cuando} · ${n.resultado||n.paso}`;return li;
-    }));
-    if(!ultima&&supervisar.checked&&!document.hidden&&!data.live.length&&data.seguimientos?.some(n=>n.estado==='pendiente'&&n.vence<=Date.now())){
-      await fetch('/api/seguimientos/supervisar',{method:'POST'});
-    }
     if(!r.ok || !data.ok)throw Error(data.error||'No se pudo retomar la llamada.');
     requested=id; feedback.textContent='Desvío solicitado. Contesta cuando suene tu móvil.';
   } catch(e){feedback.textContent=e.message;}
@@ -70,6 +56,12 @@ async function refresh() {
     if(!r.ok) throw new Error();
     const data=await r.json();
     const next=data.live.find(c=>c.source==='twilio' && c.status==='screening')?.id||'';
+    const counts=data.balance;
+    if(data.horario&&!horario.dataset.loaded){[horario.elements.desde.value,horario.elements.hasta.value]=data.horario;horario.dataset.loaded='1';}
+    if(counts)document.getElementById('balance').textContent=`Hoy: ${counts.resueltos} resueltos · ${counts.pendientes} pendientes · ${counts.revisar} necesitan tu decisión.`;
+    document.getElementById('seguimientos').replaceChildren(...(data.seguimientos||[]).map(n=>{
+      const li=document.createElement('li');li.textContent=`${n.asunto} · ${n.estado} · ${n.responsable} · ${n.cuando} · ${n.resultado||n.paso}`;return li;
+    }));
     if(next && next!==available && !pending)feedback.textContent='';
     available=next;take.hidden=!next;take.disabled=pending||requested===next;
     const a=JSON.stringify(data.live), b=JSON.stringify(data.history);

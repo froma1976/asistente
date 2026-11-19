@@ -2246,7 +2246,17 @@ setInterval(async()=>{
       n.estado=n.intentos>=2?'revisar':'pendiente';n.vence=now+3600000;saveSecretaryData();
     }else if(n.estado==='esperando'&&n.vence&&now-n.vence>86400000){n.estado='revisar';saveSecretaryData();}
   }
-  if(madridHour(now)>=20&&appConfig.ultimoBalance!==madridDay(now)&&secretaryData.seguimientos.length){
+  const hour=madridHour(now);
+  if(hour>=(appConfig.seguirDesde??10)&&hour<(appConfig.seguirHasta??20)&&(!activeCall||activeCall.status==='ended')){
+    const n=secretaryData.seguimientos.find(x=>x.estado==='pendiente'&&x.responsable==='Clara'&&x.vence<=now);
+    if(n){
+      n.estado='marcando';n.intento=now;n.intentos=(n.intentos||0)+1;saveSecretaryData();
+      await phone.dial({number:n.numero,goal:`Seguimiento: ${n.asunto}. ${n.paso}`},code=>{
+        if(code!==202){n.estado=code===409?'pendiente':'revisar';if(code===409)n.intentos--;saveSecretaryData();}
+      },n.id);
+    }
+  }
+  if(hour>=20&&appConfig.ultimoBalance!==madridDay(now)&&secretaryData.seguimientos.length){
     const b=balance(now);
     const r=await sendTelegramNotification(`Resumen de Clara: ${b.resueltos} resueltos hoy · ${b.pendientes} pendientes · ${b.revisar} necesitan tu decisión.`);
     if(r.ok){appConfig.ultimoBalance=madridDay(now);saveConfig();}
@@ -2266,17 +2276,6 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/clara/conversation' && req.method === 'GET') {
     res.writeHead(200, {'Content-Type':'application/json','Cache-Control':'no-store'});
     return res.end(JSON.stringify(secretaryData.claraChat));
-  }
-  if(pathname==='/api/seguimientos/supervisar'&&req.method==='POST'){
-    res.setHeader('Content-Type','application/json');
-    const now=Date.now(),hour=madridHour(now);
-    const n=secretaryData.seguimientos.find(x=>x.estado==='pendiente'&&x.responsable==='Clara'&&x.vence<=now);
-    if(!n||hour<(appConfig.seguirDesde??10)||hour>=(appConfig.seguirHasta??20)||activeCall&&activeCall.status!=='ended')return res.end('{}');
-    n.estado='marcando';n.intento=now;n.intentos=(n.intentos||0)+1;saveSecretaryData();
-    return phone.dial({number:n.numero,goal:`Seguimiento: ${n.asunto}. ${n.paso}`},(code,data)=>{
-      if(code!==202){n.estado=code===409?'pendiente':'revisar';if(code===409)n.intentos--;saveSecretaryData();}
-      res.end(JSON.stringify(data));
-    },n.id);
   }
   if(pathname==='/api/seguimientos/horario'&&req.method==='POST'){
     const d=await readJsonBody(req).catch(()=>({}));
