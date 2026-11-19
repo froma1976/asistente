@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const {datosParaVoz,contextoContratos,permiso}=require('./datos-voz');
 const criterio=require('./criterio-llamada');
+const {guardarPrivado, registrarRecado}=require('./acciones');
 
 // Load .env if present
 const envPath = path.join(__dirname, '.env');
@@ -25,90 +26,16 @@ if (fs.existsSync(envPath)) {
 const dataDir = process.env.CLARA_DATA_DIR || __dirname;
 fs.mkdirSync(dataDir,{recursive:true});
 const configPath = path.join(dataDir, 'config.json');
-const DEFAULT_CONTRACTS_CONTEXT = `1) FACTURA DE LUZ ACTUAL (REPSOL - Sober, Lugo):
-- Titular: Fernando Rodríguez Magdalena (Peaje 2.0TD, Mercado Libre, Producto: Tarifa Largo Plazo Precio Fijo 5Y 100R).
-- Potencia contratada: 5,75 kW en Punta y 5,75 kW en Valle (Término fijo: P1 a 0,074555 €/kW·día y P2 a 0,067552 €/kW·día = 23,69 € en 29 días).
-- Precio de la energía: 0,136146 €/kWh fijo las 24h (69 kWh consumidos = 9,39 €).
-- Servicios adicionales: Tu Asistente 24h (3,93 €/mes).
-- Total última factura: 48,68 € (impuestos incluidos).
-- CRITERIO LUZ: Solo interesa escuchar ofertas si garantizan por escrito un precio fijo inferior a 0,120 €/kWh sin servicios obligatorios ni permanencia con penalización. Si ofrecen precios más caros o no dan el precio exacto por kWh, rechazar educadamente indicando que ya tienes 0,136 €/kWh fijo.
-
-2) FACTURA DE FIBRA Y MÓVIL ACTUAL (YOIGO - Sober, Lugo):
-- Titular: Fernando Rodríguez Magdalena.
-- Paquete incluido en cuota mensual de telecomunicaciones (112,00 €/mes IVA incluido):
-  * Fijo 986471992 + Móvil principal 639403998: Fibra 1 Gbps + La Sinfín GB Ilimitados y llamadas ilimitadas (76,00 €/mes).
-  * TV Premium Extra (6,00 €/mes).
-  * 4 líneas móviles adicionales con llamadas ilimitadas: 722225085 (Sinfín 20GB: 9€), 722152119 (La Dúo Principal: 6€), 616442444 (Sinfín Adicional: 6€) y 609873029 (Sinfín 20GB: 9€).
-- Terminales financiados asociados (38,50 €/mes adicionales, total recibo 152,00 €): Samsung Galaxy S24 Ultra (22,00 €/mes, cuota 27/36, pendiente 577€) y Ray-Ban Meta Skyler (16,50 €/mes, cuota 17/24).
-- CRITERIO TELEFONÍA: Solo interesa si la operadora incluye Fibra 1 Gbps + las 5 líneas móviles (con la principal ilimitada) por menos de 85 €/mes IVA incluido precio definitivo y asume o compensa la financiación pendiente. Si no igualan las 5 líneas + Fibra 1Gb mejorando claramente ese precio, rechazar amablemente.
-
-3) PRIVACIDAD ESTRICTA:
-- NUNCA reveles por teléfono datos confidenciales de las facturas como el DNI, el código CUPS completo, dirección exacta ni números de cuenta bancaria (IBAN).`;
-
-const DEFAULT_INVOICES = [
-  {
-    id: 'inv_repsol_luz',
-    provider: 'Repsol Comercializadora de Electricidad y Gas',
-    category: 'Luz / Energía',
-    subtitle: 'Suministro en Sober (Lugo) • Peaje 2.0TD • Mercado Libre',
-    monthlyTotal: '48,68 € / mes',
-    icon: '💡',
-    theme: 'energy',
-    keyRates: [
-      'Producto: Tarifa Largo Plazo Precio Fijo 5Y 100R',
-      'Potencia contratada: 5,75 kW Punta y 5,75 kW Valle (23,69 € en 29 días)',
-      'Precio Energía Activa: 0,136146 €/kWh fijo 24h (69 kWh = 9,39 €)',
-      'Servicios añadidos: Tu Asistente 24h (3,93 €/mes)',
-    ],
-    negotiationRule:
-      'Exigir precio fijo inferior a 0,120 €/kWh sin servicios obligatorios ni permanencia. Si ofrecen más de 0,136 €/kWh, rechazar en el acto.',
-    uploadedAt: '19/10/2026',
-  },
-  {
-    id: 'inv_yoigo_telco',
-    provider: 'Yoigo (Xfera Móviles)',
-    category: 'Fibra + 5 Móviles + TV',
-    subtitle: 'Sober (Lugo) • Fijo 986471992 + Principal 639403998 + 4 líneas',
-    monthlyTotal: '112,00 € / mes (+38,50€ plazos)',
-    icon: '📱',
-    theme: 'telco',
-    keyRates: [
-      'Pack Principal (76,00 €): Fibra 1 Gbps + Móvil 639403998 con GB Ilimitados y llamadas ilimitadas',
-      'Televisión (6,00 €): TV Premium Extra',
-      '4 Líneas Móviles Adicionales (30,00 €): 722225085 (20GB: 9€), 722152119 (Dúo: 6€), 616442444 (Sinfín: 6€) y 609873029 (20GB: 9€)',
-      'Terminales Financiados (38,50 €/mes): Galaxy S24 Ultra (22€/mes, pendiente 577€) y Ray-Ban Meta Skyler (16,50€/mes)',
-    ],
-    negotiationRule:
-      'Exigir que entren las 5 líneas móviles + Fibra 1 Gbps por menos de 85 €/mes IVA incluido definitivo y compensando terminales.',
-    uploadedAt: '01/11/2026',
-  },
-];
-
-const DEFAULT_CONTACTS = [
-  {
-    id: 'cnt_elena',
-    name: 'Elena Castro (Asesoría Fiscal)',
-    phone: '+34 982 45 11 08',
-    relation: 'Asesoría / Gestoría Monforte',
-    vip: true,
-    notes: 'Lleva los trimestres e impuestos de Fernando. Prioridad alta.',
-  },
-  {
-    id: 'cnt_martin',
-    name: 'Martín Vázquez',
-    phone: '+34 648 92 15 30',
-    relation: 'Huésped Casa Rural',
-    vip: false,
-    notes: 'Interesado en reserva de fin de semana para 4 personas con mascota pequeña.',
-  },
-];
+const DEFAULT_CONTRACTS_CONTEXT = '';
+const DEFAULT_INVOICES = [];
+const DEFAULT_CONTACTS = [];
 
 const BUSINESS_TEMPLATES = {
   full_360: {
     name: '🌟 Secretaria 360º (Personal + Casa Rural + Facturas)',
     nightlyRate: '120 €/noche (mínimo 2 noches)',
     filterRules:
-      'Actuar como mi secretaria personal 360º: recoger recados detallados, agendar citas en el calendario, comprobar disponibilidad y tomar reservas de alojamiento rural (120 €/noche), pasarme llamadas de contactos VIP o urgentes a mi móvil (639403998), y comparar ofertas de luz o telefonía con mis facturas reales de Repsol y Yoigo.',
+      'Actuar como mi secretaria personal 360º: recoger recados detallados, agendar citas en el calendario, comprobar disponibilidad y tomar reservas de alojamiento rural (120 €/noche), pasarme llamadas de contactos VIP o urgentes a mi móvil, y comparar ofertas de luz o telefonía con mis facturas configuradas.',
   },
   rural_hotel: {
     name: '🏡 Alojamiento Rural / Casa Rural / Hotel',
@@ -139,7 +66,7 @@ const BUSINESS_TEMPLATES = {
 let appConfig = {
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   ownerName: process.env.OWNER_NAME || 'Fernando',
-  personalPhoneNumber: process.env.PERSONAL_PHONE_NUMBER || '639403998',
+  personalPhoneNumber: process.env.PERSONAL_PHONE_NUMBER || '',
   ownerEmail: process.env.OWNER_EMAIL || 'contacto@ejemplo.com',
   voiceName: 'Aoede',
   businessTemplate: 'full_360',
@@ -180,7 +107,7 @@ if (fs.existsSync(configPath)) {
 
 function saveConfig() {
   try {
-    fs.writeFileSync(configPath, JSON.stringify(appConfig, null, 2), 'utf8');
+    guardarPrivado(configPath, appConfig);
   } catch (e) {
     console.error('Error guardando config.json:', e.message);
   }
@@ -231,7 +158,7 @@ if (fs.existsSync(secretaryDataPath)) {
 
 function saveSecretaryData() {
   try {
-    fs.writeFileSync(secretaryDataPath, JSON.stringify(secretaryData, null, 2), 'utf8');
+    guardarPrivado(secretaryDataPath, secretaryData);
   } catch (e) {
     console.error('Error guardando secretary_data.json:', e.message);
   }
@@ -487,7 +414,7 @@ function broadcastSecretaryUpdate(noticeText) {
 }
 
 // ============================================================================
-// Feature 1: Live Telegram Bot Alerts & Bidirectional Control (@fraypericobot)
+// Feature 1: Live Telegram Bot Alerts & Bidirectional Control
 // ============================================================================
 let lastTelegramUpdateId = 0;
 
@@ -501,6 +428,7 @@ async function sendTelegramNotification(text, force = false) {
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
     const res = await fetch(url, {
       method: 'POST',
+      signal: AbortSignal.timeout(5000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
@@ -798,7 +726,11 @@ function addMessageRecord({ callerName, phone, subject, message, urgency }) {
       minute: '2-digit',
     }),
   };
-  secretaryData.messages.unshift(item);
+  return registrarRecado(item, () => {
+    const messages = [item, ...secretaryData.messages];
+    guardarPrivado(secretaryDataPath, {...secretaryData, messages});
+    secretaryData.messages = messages;
+  }, () => {
   upsertContactFromAction({
     name: item.callerName,
     phone: item.phone,
@@ -807,10 +739,10 @@ function addMessageRecord({ callerName, phone, subject, message, urgency }) {
   });
   appendTranscriptChunk('system', `📝 Recado guardado de ${item.callerName}: "${item.message}"`);
   broadcastSecretaryUpdate(`Nuevo recado de ${item.callerName}`);
-  sendTelegramNotification(
+  return sendTelegramNotification(
     `📝 <b>Nuevo Recado para ${appConfig.ownerName}</b>\n👤 <b>De:</b> ${item.callerName}\n📞 <b>Tel:</b> ${item.phone}\n📌 <b>Asunto:</b> ${item.subject}\n💬 <b>Mensaje:</b> ${item.message}`
   );
-  return item;
+  });
 }
 
 /**
@@ -971,10 +903,10 @@ async function saveAppointment({ title, withPerson, phone, date, time, locationO
     `📅 Cita anotada en agenda: ${item.title} (${item.date} a las ${item.time})`
   );
   broadcastSecretaryUpdate(`Nueva cita agendada: ${item.title}`);
-  sendTelegramNotification(
+  const aviso = await sendTelegramNotification(
     `📅 <b>Nueva Cita Agendada en tu Calendario</b>\n📌 <b>Motivo:</b> ${item.title}\n👤 <b>Con:</b> ${item.withPerson} (${item.phone})\n🕒 <b>Cuándo:</b> ${item.date} a las ${item.time}\n📍 <b>Lugar:</b> ${item.locationOrChannel}\n📝 <b>Notas:</b> ${item.notes || '—'}`
   );
-  return item;
+  return {...item, telegram:aviso.ok?'enviado':aviso.skipped?'desactivado':'sin_confirmar'};
 }
 
 function addReservationRecord({
@@ -993,7 +925,7 @@ function addReservationRecord({
     checkIn: checkIn || 'Por confirmar',
     checkOut: checkOut || 'Por confirmar',
     guestsCount: Number(guestsCount || 2),
-    propertyOrService: propertyOrService || 'Alojamiento Rural (Sober)',
+    propertyOrService: propertyOrService || 'Alojamiento Rural',
     specialRequests: specialRequests || 'Sin peticiones especiales',
     status: 'pendiente_confirmar',
     createdAt: new Date().toLocaleString('es-ES', {
@@ -1054,7 +986,7 @@ FUNCIONES PRINCIPALES DE SECRETARIA (USA SIEMPRE LAS HERRAMIENTAS CORRESPONDIENT
 3. AGENDAR CITAS EN EL CALENDARIO ('schedule_appointment'):
    Si alguien quiere concertar una cita, reunión, visita o llamada programada con ${appConfig.ownerName}, pregúntale qué día y a qué hora le viene bien, el asunto y su teléfono, y EJECUTA 'schedule_appointment' para dejarlo anotado en el calendario de ${appConfig.ownerName}.
 4. COMPROBAR DISPONIBILIDAD ('check_availability') Y GESTIONAR RESERVAS ('take_reservation'):
-   Si llaman preguntando por fechas libres o para hacer una reserva (por ejemplo, para el alojamiento rural en Sober / Peña da Osa), EJECUTA primero 'check_availability' para mirar si esas fechas están libres y confirmar la tarifa (${appConfig.nightlyRate || '120 €/noche'}), y cuando te den su nombre, teléfono, fechas y número de personas, EJECUTA 'take_reservation'.
+   Si llaman preguntando por fechas libres o para hacer una reserva (por ejemplo, para el alojamiento rural), EJECUTA primero 'check_availability' para mirar si esas fechas están libres y confirmar la tarifa (${appConfig.nightlyRate || '120 €/noche'}), y cuando te den su nombre, teléfono, fechas y número de personas, EJECUTA 'take_reservation'.
 5. CLASIFICACIÓN EN TIEMPO REAL ('classify_call'):
    En cuanto sepas quién llama y para qué, ejecuta 'classify_call' en segundo plano para actualizar la ficha en la pantalla de ${appConfig.ownerName}.
 6. COMPARACIÓN INTELIGENTE CON LAS FACTURAS DE LUZ Y MÓVIL DE ${appConfig.ownerName.toUpperCase()}:
@@ -1197,7 +1129,7 @@ const GEMINI_TOOLS = [
             },
             locationOrChannel: {
               type: 'STRING',
-              description: 'Lugar o modalidad (ej. "Presencial en Sober", "Llamada telefónica", "Videollamada")',
+              description: 'Lugar o modalidad (ej. "Presencial en el alojamiento", "Llamada telefónica", "Videollamada")',
             },
             notes: {
               type: 'STRING',
@@ -1237,7 +1169,7 @@ const GEMINI_TOOLS = [
             },
             propertyOrService: {
               type: 'STRING',
-              description: 'Alojamiento o servicio solicitado (ej. "Casa Rural Peña da Osa - Sober")',
+              description: 'Alojamiento o servicio solicitado (ej. "Casa rural")',
             },
             specialRequests: {
               type: 'STRING',
@@ -1346,6 +1278,8 @@ Abre con «Hola, diga», nunca con «Sí». Escucha antes de preguntar; si no qu
 La autorización previa del titular para comerciales se limita a dato_comercial_pedido. Para otros datos se requiere verificación por el panel. Nunca mezcles sectores, empresas o trámites, ni autorices cambios, pagos o contratos. Nunca des códigos ni datos bancarios.
 Ante ofertas, escucha las condiciones y pregunta por lo que falte. Usa consultar_tarifa_publica para contrastar tarifas, no para verificar al interlocutor. No inventes precios ni datos. Deja hablar, desarrolla tus respuestas cuando ayude y mantén un ritmo cálido también en llamadas largas. No te despidas por una pausa ni por haber contestado una pregunta. Si parece que han terminado, pregunta si quieren añadir algo y espera su respuesta.
 ${buildClaraPhoneContext(phoneCall, callerMemory)}` : buildSystemInstruction(callerMemory)) + `
+Eres Clara, asistente virtual; si te preguntan, dilo con naturalidad. Haz una sola pregunta cada vez y pide repetir solo la parte dudosa. Para un comercial que ya dijo nombre, empresa y producto, pregunta por la primera condición que falte, por ejemplo el precio final. No repitas lo que ya sabes. Humor solo si encaja; nunca en urgencias, duelo o enfado. Si hay peligro inmediato, orienta a emergencias.
+Separa recado guardado, aviso enviado y cita anotada. No prometas ninguna acción antes del resultado. Con message_not_saved explica que el recado no se guardó. Si se guardó pero Telegram no está confirmado, di «He guardado el recado, pero no puedo confirmar que le haya llegado el aviso». Un aviso enviado tampoco significa que lo haya leído.
 Agenda personal: antes de ofrecer o confirmar una hora consulta consultar_agenda con fecha exacta y hora de Madrid. Si está ocupada pide otra hora y compruébala. Si no puedes verificarla, no la ofrezcas como libre. No reveles motivos de ocupación. Confirma que una cita quedó anotada solo tras el éxito de schedule_appointment.
 ${mesa.margen}
 ${registerTable?'Cuando recepción confirme explícitamente la mesa, registra la fecha y hora exactas acordadas con registrar_mesa_confirmada antes de despedirte. Una hora alternativa autorizada y confirmada también se registra. No registres una mera oferta o una negativa. El evento y el aviso son de prueba.':''}
@@ -1471,7 +1405,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
             result={estado:criterio.disponibilidad(fc.args||{},secretaryData.blockedDates,secretaryData.reservations),tarifa:appConfig.nightlyRate||'120 €/noche'};
           }
           else if(fc.name==='take_message') {
-            if(!phoneCall.simulated) { const saved=addMessageRecord(fc.args||{}); result={status:'message_saved',id:saved.id}; }
+            if(!phoneCall.simulated) { const {status,id,telegram}=await addMessageRecord(fc.args||{}); result={status,id,telegram}; }
             else result={status:'message_saved_simulation'};
           }
           else if(fc.name==='take_reservation') {
@@ -1494,7 +1428,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
           else if(fc.name==='schedule_appointment' && !phoneCall.simulated) {
             try {
               if(!appConfig.googleRefreshToken) throw Error('Calendar no conectado.');
-              await addAppointmentRecord(fc.args||{}); result={estado:'confirmada'};
+              const cita=await addAppointmentRecord(fc.args||{}); result={estado:'confirmada',telegram:cita.telegram};
             } catch(e) {result={estado:'no_confirmada',motivo:e.message};}
           } else if (fc.name==='consultar_tarifa_publica' && checksMade < 3) {
             checksMade++;
@@ -1525,7 +1459,11 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
               response: availResult,
             });
           } else if (call.name === 'take_message') {
-            const saved = addMessageRecord(args);
+            const saved = await addMessageRecord(args);
+            if (!saved.id) {
+              functionResponses.push({id:call.id,name:call.name,response:saved});
+              continue;
+            }
             onClassification?.({
               callerName: saved.callerName,
               category: 'Recado / Aviso',
@@ -1536,7 +1474,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
             functionResponses.push({
               id: call.id,
               name: call.name,
-              response: { status: 'message_saved', id: saved.id },
+              response: { status: saved.status, id: saved.id, telegram:saved.telegram },
             });
           } else if (call.name === 'schedule_appointment') {
             let saved;
@@ -1557,7 +1495,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
             functionResponses.push({
               id: call.id,
               name: call.name,
-              response: { status: 'appointment_scheduled', id: saved.id },
+              response: { status: 'appointment_scheduled', id: saved.id, telegram:saved.telegram },
             });
           } else if (call.name === 'consultar_agenda') {
             functionResponses.push({id:call.id,name:call.name,response:await checkSlot(args)});
@@ -1933,7 +1871,7 @@ function getSimulationScenarios() {
   const owner = appConfig.ownerName || 'Fernando';
   return {
     reservation_request: {
-      fromNumber: '+34 648 92 15 30',
+      fromNumber: '+1 202 555 0110',
       callerVoice: 'Puck',
       steps: [
         {
@@ -1942,10 +1880,10 @@ function getSimulationScenarios() {
         },
         {
           role: 'caller',
-          text: 'Hola, buenos días. Soy Martín Vázquez. Llamaba porque queremos hacer una reserva en el alojamiento rural de Sober para cuatro personas, entrando el viernes 20 de noviembre y saliendo el domingo 22.',
+          text: 'Hola, buenos días. Soy Martín de ejemplo. Llamaba porque queremos hacer una reserva en el alojamiento rural para cuatro personas, entrando el viernes 20 de noviembre y saliendo el domingo 22.',
           classification: {
-            callerName: 'Martín Vázquez',
-            company: 'Reserva Alojamiento Rural (Sober)',
+            callerName: 'Martín de ejemplo',
+            company: 'Reserva Alojamiento Rural',
             category: 'Reserva',
             summary: 'Solicitud de reserva para 4 personas del viernes 20/11 al domingo 22/11.',
             relevanceScore: 10,
@@ -1965,25 +1903,25 @@ function getSimulationScenarios() {
         },
         {
           role: 'caller',
-          text: 'Genial. El teléfono es este mismo, 648 92 15 30. Solo queríamos saber si podemos llegar el viernes sobre las ocho de la tarde y si admitís un perro pequeño.',
+          text: 'Genial. El teléfono es este mismo, +1 202 555 0110. Solo queríamos saber si podemos llegar el viernes sobre las ocho de la tarde y si admitís un perro pequeño.',
           onAction() {
             addReservationRecord({
-              guestName: 'Martín Vázquez',
-              phone: '+34 648 92 15 30',
+              guestName: 'Martín de ejemplo',
+              phone: '+1 202 555 0110',
               checkIn: 'Viernes 20/11/2026',
               checkOut: 'Domingo 22/11/2026',
               guestsCount: 4,
-              propertyOrService: 'Alojamiento Rural en Sober',
+              propertyOrService: 'Alojamiento Rural en el alojamiento',
               specialRequests: 'Llegada viernes a las 20:00h. Viajan con perro pequeño.',
             });
           },
           classification: {
-            callerName: 'Martín Vázquez',
-            company: 'Reserva Alojamiento Rural (Sober)',
+            callerName: 'Martín de ejemplo',
+            company: 'Reserva Alojamiento Rural',
             category: 'Reserva',
             summary: 'Reserva 4 personas (20/11 al 22/11). Llegada 20:00h, viajan con perro pequeño.',
             relevanceScore: 10,
-            recommendation: '🏡 Reserva guardada + Alerta enviada a tu Telegram (@fraypericobot)',
+            recommendation: '🏡 Reserva guardada + Alerta enviada a tu Telegram',
           },
         },
         {
@@ -1993,7 +1931,7 @@ function getSimulationScenarios() {
       ],
     },
     appointment_message: {
-      fromNumber: '+34 982 45 11 08',
+      fromNumber: '+1 202 555 0111',
       callerVoice: 'Kore',
       steps: [
         {
@@ -2004,7 +1942,7 @@ function getSimulationScenarios() {
           role: 'caller',
           text: 'Hola, qué bien que me reconozcas. Llamaba para agendar una cita con Fernando este jueves a las once y media de la mañana para cerrar el trimestre, y dejarle el recado de que nos traiga las facturas de suministros.',
           classification: {
-            callerName: 'Elena Castro 🌟',
+            callerName: 'Elena de ejemplo 🌟',
             company: 'Asesoría Fiscal Monforte (VIP)',
             category: 'Cita / Agenda',
             summary: 'Contacto VIP reconocido. Quiere cita este jueves a las 11:30h y recado sobre facturas.',
@@ -2018,16 +1956,16 @@ function getSimulationScenarios() {
           onAction() {
             addAppointmentRecord({
               title: 'Revisión trimestral e impuestos',
-              withPerson: 'Elena Castro (Asesoría Fiscal)',
-              phone: '+34 982 45 11 08',
+              withPerson: 'Elena de ejemplo (Asesoría Fiscal)',
+              phone: '+1 202 555 0111',
               date: '2026-11-19',
               time: '11:30',
               locationOrChannel: 'Despacho Asesoría (Monforte)',
               notes: 'Llevar facturas de suministros (Repsol, Yoigo) y proveedores.',
             }).catch(()=>appendTranscriptChunk('system','Cita no guardada.'));
             addMessageRecord({
-              callerName: 'Elena Castro (Asesoría)',
-              phone: '+34 982 45 11 08',
+              callerName: 'Elena de ejemplo (Asesoría)',
+              phone: '+1 202 555 0111',
               subject: 'Documentación para cita del jueves',
               message: 'Llevar preparadas las facturas de luz (Repsol) y teléfono (Yoigo) para la cita del jueves a las 11:30h.',
               urgency: 'alta',
@@ -2037,7 +1975,7 @@ function getSimulationScenarios() {
       ],
     },
     energy_comparison: {
-      fromNumber: '+34 911 88 00 92',
+      fromNumber: '+1 202 555 0112',
       callerVoice: 'Charon',
       steps: [
         {
@@ -2051,14 +1989,14 @@ function getSimulationScenarios() {
             callerName: 'Comercial Eléctrico',
             company: 'Comercializadora Eléctrica Nacional',
             category: 'Suministros (Luz / Móvil)',
-            summary: 'Ofrecen tarifa fija de luz a 0,162 €/kWh (más cara que tu factura actual de Repsol a 0,1361 €/kWh).',
+            summary: 'Oferta de ejemplo: precio superior al objetivo.',
             relevanceScore: 2,
-            recommendation: '💡 Rechazar: Pagas 0,1361 €/kWh en Repsol (su oferta de 0,162 €/kWh es un 19% más cara)',
+            recommendation: '💡 Rechazar: no mejora las condiciones.',
           },
         },
         {
           role: 'assistant',
-          text: `Un momento, tengo delante los datos de la factura de luz de ${owner} en Sober: actualmente tiene contratados 5,75 kilovatios y paga el kilovatio hora fijo las 24 horas a 0,136 euros con Repsol, con una factura total de 48 euros. A 0,162 euros le saldría más caro. Si no podéis bajar de 0,120 euros el kilovatio hora sin permanencia, no nos interesa. Muchas gracias y buen día.`,
+          text: `Gracias por la oferta. No nos interesa en estas condiciones. Buen día.`,
           onAction() {
             secretaryData.stats.spamBlocked = Number(secretaryData.stats.spamBlocked || 0) + 1;
             secretaryData.stats.timeSavedMinutes =
@@ -2069,7 +2007,7 @@ function getSimulationScenarios() {
       ],
     },
     telco_comparison: {
-      fromNumber: '+34 910 60 33 14',
+      fromNumber: '+1 202 555 0113',
       callerVoice: 'Puck',
       steps: [
         {
@@ -2083,14 +2021,14 @@ function getSimulationScenarios() {
             callerName: 'Asesor FibraPlus',
             company: 'Operadora FibraPlus',
             category: 'Suministros (Luz / Móvil)',
-            summary: 'Ofrecen Fibra 1Gb + solo 2 líneas móviles por 92€/mes. En Yoigo tienes Fibra 1Gb + TV + 5 líneas por 112€/mes.',
+            summary: 'Ofrecen Fibra 1Gb + solo 2 líneas móviles por 92€/mes. No cubre las necesidades del titular.',
             relevanceScore: 2,
-            recommendation: '📱 No compensa: En Yoigo tienes 5 líneas móviles + Fibra 1Gb + TV por 112€/mes y terminales financiados',
+            recommendation: '📱 No compensa por el número de líneas.',
           },
         },
         {
           role: 'assistant',
-          text: `Le comento: ahora mismo ${owner} tiene en Yoigo Fibra de 1 Giga, televisión y cinco líneas móviles en total, la principal con gigas ilimitados, por 112 euros al mes IVA incluido, además de dos dispositivos financiados en curso. Su oferta de 92 euros solo incluye dos líneas móviles, así que perdería tres líneas. Salvo que incluyan las cinco líneas y la fibra por menos de 85 euros al mes, no le compensa el cambio. Gracias igualmente.`,
+          text: `Gracias. El paquete no cubre las necesidades del titular.`,
           onAction() {
             secretaryData.stats.spamBlocked = Number(secretaryData.stats.spamBlocked || 0) + 1;
             secretaryData.stats.timeSavedMinutes =
@@ -2101,7 +2039,7 @@ function getSimulationScenarios() {
       ],
     },
     b2b_opportunity: {
-      fromNumber: '+34 919 03 84 21',
+      fromNumber: '+1 202 555 0114',
       callerVoice: 'Kore',
       steps: [
         {
@@ -2118,7 +2056,7 @@ function getSimulationScenarios() {
             summary:
               'Proyecto B2B con presupuesto aprobado de 18.000€ para arrancar este mismo mes.',
             relevanceScore: 10,
-            recommendation: '🔥 ¡Desviar a tu móvil (639403998) ahora! Cliente con presupuesto de 18.000€',
+            recommendation: '🔥 ¡Desviar a tu móvil ahora! Cliente con presupuesto de 18.000€',
           },
         },
         {
@@ -2127,7 +2065,7 @@ function getSimulationScenarios() {
           onAction() {
             addMessageRecord({
               callerName: 'Laura Méndez (Grupo Logístico Iberia)',
-              phone: '+34 919 03 84 21',
+              phone: '+1 202 555 0114',
               subject: 'Propuesta Proyecto B2B (18.000 €)',
               message: 'Directora de Operaciones busca cerrar piloto de automatización este mes con partida aprobada de 18.000€.',
               urgency: 'alta',
@@ -2267,10 +2205,11 @@ let claraReplyPending = false;
 const server = http.createServer(async (req, res) => {
   const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = urlObj.pathname;
-  if (pathname !== '/twilio/voice' && !phone.authorized(req)) {
+  const twilioWebhook = pathname === '/twilio/voice' || /^\/twilio\/status\/[a-f0-9]{64}$/.test(pathname);
+  if (!twilioWebhook && !phone.authorized(req)) {
     res.writeHead(401, {'WWW-Authenticate':'Basic realm="Clara", charset="UTF-8"'}); return res.end();
   }
-  if (pathname === '/twilio/voice' || pathname.startsWith('/api/phone')) {
+  if (twilioWebhook || pathname.startsWith('/api/phone')) {
     return phone.handle(pathname, req, res, readJsonBody);
   }
   if (pathname === '/api/clara/conversation' && req.method === 'GET') {
@@ -2547,7 +2486,9 @@ const server = http.createServer(async (req, res) => {
         if (!text || text.length > 2000) throw new Error('Escribe un encargo de hasta 2000 caracteres.');
         secretaryData.ownerTasks.unshift({ text, createdAt: new Date().toISOString(), status: 'pending' });
         broadcastSecretaryUpdate();
-      } else if (collection === 'messages') addMessageRecord(item || {});
+      } else if (collection === 'messages') {
+        if (!(await addMessageRecord(item || {})).id) throw Error('No se pudo guardar el recado.');
+      }
       else if (collection === 'appointments') await addAppointmentRecord(item || {});
       else if (collection === 'reservations') addReservationRecord(item || {});
       else if (collection === 'contacts') {

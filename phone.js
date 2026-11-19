@@ -41,7 +41,8 @@ function createPhone(getConfig, save, currentCall, invoices) {
       if (!cfg.geminiApiKey) missing.push('clave de Gemini');
       if (!cfg.twilioAccountSid || !cfg.twilioAuthToken || !cfg.twilioPhoneNumber) missing.push('cuenta y número de Twilio');
       if (!origin()) missing.push('URL pública HTTPS');
-      if (path === '/twilio/voice') {
+      const statusKey = path.match(/^\/twilio\/status\/([a-f0-9]{64})$/)?.[1];
+      if (path === '/twilio/voice' || statusKey) {
         if (req.method !== 'POST' || !origin() || !cfg.twilioAuthToken) return send(403, {});
         let raw = '';
         for await (const chunk of req) { raw += chunk; if (raw.length > 32768) return send(413, {}); }
@@ -49,6 +50,10 @@ function createPhone(getConfig, save, currentCall, invoices) {
         const signed = origin() + req.url + [...new Set(params.keys())].sort().map(k => k + params.get(k)).join('');
         const sig = crypto.createHmac('sha1',cfg.twilioAuthToken).update(signed).digest('base64');
         if (!equal(sig,req.headers['x-twilio-signature'] || '')) return send(403,{});
+        if (statusKey) {
+          if (['completed','busy','failed','no-answer','canceled'].includes(params.get('CallStatus'))) tickets.delete(statusKey);
+          return send(200,{});
+        }
         res.writeHead(200, {'Content-Type':'text/xml'});
         return res.end(busy() || draining() || !cfg.geminiApiKey ? '<Response><Reject reason="busy"/></Response>' : stream({number:params.get('From'), goal:''}).xml);
       }
@@ -80,11 +85,21 @@ function createPhone(getConfig, save, currentCall, invoices) {
       try {
         const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(cfg.twilioAccountSid)}/Calls.json`, {
           method:'POST', headers:{Authorization:'Basic '+Buffer.from(`${cfg.twilioAccountSid}:${cfg.twilioAuthToken}`).toString('base64')},
-          body:new URLSearchParams({To:data.number, From:cfg.twilioPhoneNumber, Twiml:s.xml, Timeout:'30'}), signal:AbortSignal.timeout(15000)
+          body:new URLSearchParams({To:data.number, From:cfg.twilioPhoneNumber, Twiml:s.xml, Timeout:'30',StatusCallback:`${origin()}/twilio/status/${s.key}`,StatusCallbackEvent:'completed'}), signal:AbortSignal.timeout(15000)
         });
-        if (!r.ok) { tickets.delete(s.key); return send(502,{error:'Twilio ha rechazado la llamada. Comprueba el número y la cuenta.'}); }
+        if (!r.ok) {
+          if (r.status>=400 && r.status<500 && r.status!==408) {
+            tickets.delete(s.key); return send(502,{error:'Twilio ha rechazado la llamada. Comprueba el número y la cuenta.'});
+          }
+          return send(502,{error:'Resultado incierto. Comprueba la llamada en Twilio antes de repetir.'});
+        }
         return send(202,{message:'Twilio ha recibido la llamada. Esperando a que contesten.'});
-      } catch { return send(502,{error:'Sin respuesta de Twilio. Comprueba el estado antes de repetir.'}); }
+      } catch (err) {
+        if (['ENOTFOUND','EAI_AGAIN','ECONNREFUSED','UND_ERR_CONNECT_TIMEOUT'].includes(err.cause?.code)) {
+          tickets.delete(s.key); return send(502,{error:'No se pudo conectar con Twilio.'});
+        }
+        return send(502,{error:'Sin respuesta de Twilio. Comprueba el estado antes de repetir.'});
+      }
       finally { dialing = false; }
     },
   };

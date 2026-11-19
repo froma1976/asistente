@@ -156,7 +156,7 @@ function applyConfigToUI(cfg) {
   currentConfig = cfg || {};
   const owner = cfg.ownerName || 'Fernando';
   if (ownerHeaderName) ownerHeaderName.textContent = owner;
-  targetMobileLabel.textContent = `Pasar llamada en caliente a ${cfg.personalPhoneNumber || '639403998'}`;
+  targetMobileLabel.textContent = `Pasar llamada en caliente a ${cfg.personalPhoneNumber || ''}`;
 
   if (cfg.hasApiKey) {
     apiStatusBadge.className = 'status-pill ok';
@@ -173,7 +173,7 @@ function applyConfigToUI(cfg) {
   document.getElementById('cfgGeminiKey').value = cfg.geminiApiKey || '';
   document.getElementById('cfgVoiceName').value = cfg.voiceName || 'Aoede';
   document.getElementById('cfgOwnerName').value = owner;
-  document.getElementById('cfgPersonalPhone').value = cfg.personalPhoneNumber || '639403998';
+  document.getElementById('cfgPersonalPhone').value = cfg.personalPhoneNumber || '';
   document.getElementById('cfgOwnerEmail').value = cfg.ownerEmail || '';
   const rateEl = document.getElementById('cfgNightlyRate');
   if (rateEl) rateEl.value = cfg.nightlyRate || '120 €/noche (mínimo 2 noches)';

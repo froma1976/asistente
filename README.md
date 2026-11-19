@@ -53,3 +53,8 @@ Puedes configurar todo desde el botón **"⚙️ Configurar Mi Móvil y Reglas"*
 - `OWNER_EMAIL`: Tu email para cuando pidas que te envíen la propuesta por escrito.
 - `FILTER_RULES`: Tus reglas sobre qué llamadas comerciales descartar y cuáles investigar.
 - `TWILIO_ACCOUNT_SID` y `TWILIO_AUTH_TOKEN`: Credenciales de Twilio para conectar un número telefónico real apuntando su webhook de voz a `https://tu-dominio/twilio/voice`.
+### Actualización de privacidad
+
+Antes de actualizar el VPS, verifica que el móvil de desvío está en la configuración privada o en `PERSONAL_PHONE_NUMBER`. Si dependías de contactos, facturas o reglas incorporados en el código antiguo, guárdalos primero desde el panel en el volumen privado. Las instalaciones nuevas empiezan sin esos datos; las existentes siguen leyendo `config.json` y `secretary_data.json` de `CLARA_DATA_DIR`.
+
+El webhook firmado de estado `/twilio/status/...` debe llegar al mismo servidor HTTPS que `/twilio/voice`. Sirve para liberar la línea si Twilio finaliza una llamada saliente aunque se haya perdido la respuesta inicial. Ante un resultado incierto no se repite la marcación automáticamente.

@@ -1,4 +1,6 @@
 node_modules/
 config.json
 secretary_data.json
+config.json.tmp
+secretary_data.json.tmp
 .env

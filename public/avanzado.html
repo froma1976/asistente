@@ -20,7 +20,7 @@
 
       <div class="topbar-actions">
         <div id="apiStatusBadge" class="status-pill warn">⚙️ Conectando...</div>
-        <button id="testTelegramTopBtn" class="btn btn-chip" title="Enviar mensaje de prueba a tu bot de Telegram @fraypericobot">✈️ Probar Alerta Telegram</button>
+        <button id="testTelegramTopBtn" class="btn btn-chip" title="Enviar mensaje de prueba a tu bot de Telegram">✈️ Probar Alerta Telegram</button>
         <button id="openSettingsBtn" class="btn btn-secondary">⚙️ Configurar Todo</button>
       </div>
     </header>
@@ -164,7 +164,7 @@
             <span class="takeover-icon">📲</span>
             <div class="takeover-text">
               <strong>¡ATENDER YO! DESVIAR A MI MÓVIL</strong>
-              <small id="targetMobileLabel">Pasar llamada en caliente a 639403998</small>
+              <small id="targetMobileLabel">Pasar llamada en caliente al móvil configurado</small>
             </div>
           </button>
 
@@ -342,7 +342,7 @@
             </label>
             <label>
               📱 Tu Móvil Personal (Adonde se desvía)
-              <input type="text" id="cfgPersonalPhone" placeholder="639403998" required />
+              <input type="text" id="cfgPersonalPhone" placeholder="+34…" required />
             </label>
           </div>
           <div class="form-row">
@@ -366,15 +366,15 @@
         </div>
 
         <div class="form-section">
-          <h3>3. Alertas y Control en Vivo por Telegram (@fraypericobot)</h3>
+          <h3>3. Alertas y Control en Vivo por Telegram</h3>
           <div class="form-row">
             <label>
               Telegram Bot Token
-              <input type="password" id="cfgTelegramToken" placeholder="8613561235:AA..." />
+              <input type="password" id="cfgTelegramToken" placeholder="Token del bot" />
             </label>
             <label>
               Tu Telegram Chat ID
-              <input type="text" id="cfgTelegramChatId" placeholder="161518227" />
+              <input type="text" id="cfgTelegramChatId" placeholder="ID del chat" />
             </label>
           </div>
           <small style="color: var(--muted); font-size: 0.76rem;">
@@ -402,7 +402,7 @@
             </label>
           </div>
           <div class="webhook-note" style="background: rgba(16,185,129,0.1); padding: 10px; border-radius: 8px; border: 1px solid rgba(16,185,129,0.3);">
-            <strong>📲 Códigos para marcar en tu móvil Yoigo (639403998):</strong><br/>
+            <strong>📲 Códigos para marcar en tu móvil Yoigo:</strong><br/>
             • Desviar a tu secretaria cuando <strong>cuelgas/rechazas</strong> la llamada: <code id="gsmCodeBusy">**67*+34TUNUMERO#</code><br/>
             • Desviar si <strong>no contestas en 15 seg</strong>: <code id="gsmCodeNoAnswer">**61*+34TUNUMERO*11*15#</code><br/>
             • Desactivar todos los desvíos: <code>##002#</code>
