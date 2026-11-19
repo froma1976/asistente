@@ -1,5 +1,11 @@
 const live=document.getElementById('live'), past=document.getElementById('past'), notice=document.getElementById('notice');
 let prevLive, prevHistory;
+const ultima=new URLSearchParams(location.search).has('ultima');
+if(ultima) {
+  live.closest('section').hidden=true;
+  past.before(notice);
+  past.previousElementSibling.previousElementSibling.textContent='Última llamada';
+}
 const take=document.getElementById('take'), feedback=document.getElementById('transfer-status');
 let available='',pending=false,requested='';
 take.onclick=async()=>{
@@ -54,7 +60,8 @@ async function refresh() {
     }
     if(b!==prevHistory) {
       const opened=new Set([...past.querySelectorAll('details[open]')].map(d=>d.dataset.id));
-      past.replaceChildren(...(data.history.length?data.history.map(c=>card(c,opened.has(c.id))):['Todavía no hay llamadas guardadas.']));
+      const calls=ultima?data.history.filter(c=>c.source==='twilio').slice(0,1):data.history;
+      past.replaceChildren(...(calls.length?calls.map(c=>card(c,ultima||opened.has(c.id))):['Todavía no hay llamadas guardadas.']));
       prevHistory=b;
     }
     notice.textContent='';
