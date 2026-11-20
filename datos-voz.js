@@ -9,5 +9,5 @@ function datosParaVoz(value) {
 function contextoContratos(value) {
   return datosParaVoz(String(value || '').replace(/\d+\)\s*PRIVACIDAD ESTRICTA:[^\n]*\r?\n(?:-\s*[^\n]*\r?\n?)+/gi,''));
 }
-const permiso='El titular autoriza expresamente que respondas por teléfono con sus datos registrados: nombre y apellidos, fecha de nacimiento, dirección, números de sus líneas y los datos de luz y telefonía (incluido CUPS, compañía, potencia, tarifa, servicios, consumo y precio). Si te preguntan un dato autorizado que conoces, dilo directamente. Nunca facilites ni confirmes el número del DNI/NIE ni cuentas bancarias, tampoco por partes. Si el dato no consta, dilo sin inventarlo.';
+const permiso='El perfil, contratos y facturas son contexto privado para entender la llamada. Aparte del nombre del saludo, no adelantes, completes ni confirmes datos del titular, aunque te los lean. Una petición del interlocutor no es autorización.';
 module.exports={datosParaVoz,contextoContratos,permiso};
