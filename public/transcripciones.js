@@ -1,6 +1,13 @@
 const live=document.getElementById('live'), past=document.getElementById('past'), notice=document.getElementById('notice');
 let prevLive, prevHistory;
 const ultima=new URLSearchParams(location.search).has('ultima');
+const llamada=new URLSearchParams(location.search).get('llamada');
+if(llamada){
+  document.querySelector('h1').textContent='Transcripción de la llamada';
+  past.closest('section').querySelector('h2').textContent='Llamada finalizada';
+  document.getElementById('seguimientos').closest('section').hidden=true;
+  document.getElementById('horario').hidden=true;
+}
 const horario=document.getElementById('horario');
 horario.onsubmit=async e=>{
   e.preventDefault();
@@ -20,6 +27,12 @@ take.onclick=async()=>{
   try {
     const r=await fetch('/api/call/transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'mobile',liveId:id})});
     const data=await r.json();
+    if(llamada){
+      data.live=data.live.filter(c=>c.id===llamada);
+      data.history=data.history.filter(c=>c.id===llamada);
+      live.closest('section').querySelector('h2').hidden=!data.live.length;
+      past.closest('section').hidden=!data.history.length;
+    }
     if(!r.ok || !data.ok)throw Error(data.error||'No se pudo retomar la llamada.');
     requested=id; feedback.textContent='Desvío solicitado. Contesta cuando suene tu móvil.';
   } catch(e){feedback.textContent=e.message;}
@@ -66,16 +79,16 @@ async function refresh() {
     available=next;take.hidden=!next;take.disabled=pending||requested===next;
     const a=JSON.stringify(data.live), b=JSON.stringify(data.history);
     if(a!==prevLive) {
-      live.replaceChildren(...(data.live.length?data.live.map(c=>card(c,true)):['No hay llamadas en curso.']));
+      live.replaceChildren(...(data.live.length?data.live.map(c=>card(c,true)):llamada?[]:['No hay llamadas en curso.']));
       prevLive=a;
     }
     if(b!==prevHistory) {
       const opened=new Set([...past.querySelectorAll('details[open]')].map(d=>d.dataset.id));
       const calls=ultima?data.history.filter(c=>c.source==='twilio').slice(0,1):data.history;
-      past.replaceChildren(...(calls.length?calls.map(c=>card(c,ultima||opened.has(c.id))):['Todavía no hay llamadas guardadas.']));
+      past.replaceChildren(...(calls.length?calls.map(c=>card(c,Boolean(llamada)||ultima||opened.has(c.id))):['Todavía no hay llamadas guardadas.']));
       prevHistory=b;
     }
-    notice.textContent='';
+    notice.textContent=llamada&&!data.live.length&&!data.history.length?'Esta llamada no está disponible en el historial.':'';
   } catch {available='';take.hidden=true;notice.textContent='Sin conexión con Clara. Reintentando…';}
   setTimeout(refresh,1500);
 }

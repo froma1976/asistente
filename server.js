@@ -25,6 +25,7 @@ if (fs.existsSync(envPath)) {
 // Runtime settings (editable from UI and persisted to config.json)
 const dataDir = process.env.CLARA_DATA_DIR || __dirname;
 fs.mkdirSync(dataDir,{recursive:true});
+const avisos = require('./avisos').crearAvisos(dataDir);
 const configPath = path.join(dataDir, 'config.json');
 const DEFAULT_CONTRACTS_CONTEXT = '';
 const DEFAULT_INVOICES = [];
@@ -2302,6 +2303,17 @@ const server = http.createServer(async (req, res) => {
   if (twilioWebhook || pathname.startsWith('/api/phone')) {
     return phone.handle(pathname, req, res, readJsonBody);
   }
+  if (pathname === '/api/avisos') {
+    try {
+      res.setHeader('Content-Type','application/json');
+      res.setHeader('Cache-Control','no-store');
+      if (req.method === 'GET') return res.end(JSON.stringify({clave:avisos.clave()}));
+      if (req.method !== 'POST') res.statusCode = 405;
+      else if (!req.headers['content-type']?.startsWith('application/json') ||
+               !avisos.registrar(await readJsonBody(req).catch(()=>null))) res.statusCode = 400;
+    } catch { res.statusCode = 503; }
+    return res.end('{}');
+  }
   if (pathname === '/api/clara/conversation' && req.method === 'GET') {
     res.writeHead(200, {'Content-Type':'application/json','Cache-Control':'no-store'});
     return res.end(JSON.stringify(secretaryData.claraChat));
@@ -3092,6 +3104,7 @@ server.on('upgrade', (req, socket) => {
         const msg = JSON.parse(typeof raw === 'string' ? raw : raw.toString('utf8'));
 
         if (msg.event === 'start') {
+          if (call) return;
           const customParams = msg.start?.customParameters || {};
           call = startNewCallState({
             source: 'twilio',
@@ -3105,6 +3118,9 @@ server.on('upgrade', (req, socket) => {
             if(n){n.estado='revisar';saveSecretaryData();} // Solo una resolución explícita cierra la gestión.
           }
           call.twilioStreamSid = msg.start?.streamSid;
+          if (!phoneCall.goal && call.twilioStreamSid) {
+            avisos.llamada(call.id,appConfig.publicWebhookUrl).catch(()=>console.warn('Avisos de llamada no disponibles.'));
+          }
           call.downsample = {};
           const saludo = !phoneCall.goal && saludoCache?.voice === claraVoice() ? saludoCache : null;
           if (saludo && call.twilioStreamSid && ws.readyState === 1) {
