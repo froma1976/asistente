@@ -1232,7 +1232,7 @@ Si una centralita ofrece una tecla de navegación que encaja con el encargo, usa
 Para un recado usa take_message. Para una cita nueva consulta la agenda y regístrala solo si se acuerda. Para cambios o cancelaciones toma un recado; no crees una cita nueva.
 Para alojamiento comprueba entrada y salida exactas con check_availability; recoge únicamente solicitudes pendientes, nunca prometas una reserva.
 Cuando quede claro que hay una oferta y conozcas empresa y producto, avisa brevemente con tus propias palabras y ejecuta consultar_tarifa_publica con la marca y el tipo de producto y después comparar_oferta. Retoma tú el turno. Cita brevemente el proveedor y la condición pública relevante para plantear una pregunta concreta: impuestos, cuota fija, permanencia, cobertura o precio tras la promoción. Distingue lo que ofrece este interlocutor de lo publicado. Si no hay referencia equivalente o falla internet, dilo, pide las condiciones por escrito y no inventes ahorro.
-Si faltan condiciones, pregunta o toma un recado: no es spam. Si interesa, guarda un recado sin contratar nada. Solo si el resultado es «No interesa» despídete educadamente y usa reject_and_hangup.
+Ante una propuesta comercial, negocia para el titular. Señala el punto débil concreto y pide una mejora verificable, aunque la primera oferta ya interese. «Ese precio dura tres meses. ¿Me lo puedes mantener todo el año con las mismas líneas?» es un ejemplo, no un guion. Usa una referencia pública solo si es equivalente. No inventes ofertas rivales ni reveles el presupuesto máximo del titular. Si faltan datos, pregunta primero; no des por hecho que hay extras o permanencia. Espera la respuesta. Si cambian las condiciones, vuelve a comparar la última propuesta, sin mezclar versiones. Si es su mejor oferta, no insistas: si interesa, pide condiciones finales por escrito y guarda recado; si no mejora, declina. No aceptes contratos, grabaciones de conformidad ni cambios. Si no quieren negociar, respétalo.
 Mejoras de llamadas reales anteriores, solo cuando encajen en esta gestión: ${criterio.experiencia(secretaryData.history).join(' ')||'ninguna todavía'}.`;
 }
 
@@ -1276,6 +1276,14 @@ function createGeminiLiveSession({
     {name:'consultar_pistas',description:'Busca antecedentes privados del asunto ya mencionado.',parameters:{type:'OBJECT',properties:{}}},
     {name:'comparar_oferta',description:'Evalúa la propuesta escuchada usando las referencias públicas ya consultadas y las facturas comparables disponibles.',parameters:{type:'OBJECT',properties:{sector:{type:'STRING',enum:ofertas.sectores}},required:['sector']}}
   ];
+  let turnoComercial=0, comparacionInicial=null, ultimoTurnoComparado=-1;
+  const dialogoOferta=[];
+  function anotarOferta(role,text){
+    const last=dialogoOferta.at(-1);
+    if(last?.role===role) last.text=(last.text+text).slice(-2000);
+    else dialogoOferta.push({role,text:text.slice(-2000)});
+    if(dialogoOferta.length>30) dialogoOferta.shift();
+  }
 
   const handleOpen = () => {
     const setupMessage = {
@@ -1391,12 +1399,19 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
         }
 
         if (content.inputTranscription?.text) {
+          turnoComercial++;
+          anotarOferta('caller',content.inputTranscription.text);
           heard=(heard+' '+content.inputTranscription.text).slice(-7000);
           recentQuestion=(recentQuestion+content.inputTranscription.text).slice(-1000);
           onTranscript?.('caller', content.inputTranscription.text);
         }
 
         if (content.outputTranscription?.text) {
+          anotarOferta('assistant',content.outputTranscription.text);
+          if(comparacionInicial && !comparacionInicial.huboRespuesta){
+            comparacionInicial.huboRespuesta=true;
+            comparacionInicial.antesDeRespuesta=turnoComercial;
+          }
           onTranscript?.('assistant', content.outputTranscription.text);
         }
 
@@ -1438,15 +1453,22 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
             result={pistas:criterio.pistas(phoneCall.goal||heard,{tasks:secretaryData.ownerTasks,profile:appConfig.lifeContext,memory:callerMemory?.summaryText})};
           }
           else if(fc.name==='comparar_oferta') {
+            ultimoTurnoComparado=turnoComercial;
+            const rebatida=comparacionInicial?.sector===fc.args?.sector &&
+              comparacionInicial.huboRespuesta && turnoComercial>comparacionInicial.antesDeRespuesta;
+            if(!comparacionInicial || comparacionInicial.sector!==fc.args?.sector)
+              comparacionInicial={sector:fc.args?.sector,antesDeRespuesta:turnoComercial,huboRespuesta:false};
             const sector={energía:/energ|electric|\bluz\b/i,telecomunicaciones:/telecom|telefon|fibra|m[oó]vil/i}[fc.args?.sector];
             offerVerdict='Faltan datos';
             const invoices=sector instanceof RegExp?invoiceBriefs().filter(x=>sector.test(x.category)):[];
             const checks=contrastes.filter(x=>x.sector===fc.args?.sector);
+            let argumento='';
             if((invoices.length||checks.length) && heard.trim() && comparisons++<4) {
-              const review=await ofertas.summarize(apiKey,{transcript:[{role:'caller',text:heard}],checks},invoices).catch(()=>null);
+              const review=await ofertas.summarize(apiKey,{transcript:dialogoOferta,checks},invoices,true).catch(()=>null);
               if(['Interesa','No interesa'].includes(review?.veredicto)) offerVerdict=review.veredicto;
+              if(typeof review?.argumento==='string' && !rebatida) argumento=review.argumento.slice(0,450);
             }
-            result={veredicto:offerVerdict};
+            result={veredicto:offerVerdict,argumento,siguientePaso:ofertas.siguientePaso(offerVerdict,fc.args?.sector,heard.slice(-1000),rebatida)};
           }
           else if(fc.name==='check_availability') {
             result={estado:criterio.disponibilidad(fc.args||{},secretaryData.blockedDates,secretaryData.reservations),tarifa:appConfig.nightlyRate||'120 €/noche'};
@@ -1462,6 +1484,8 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
           }
           else if(fc.name==='reject_and_hangup') {
             if(offerVerdict!=='No interesa'||phoneCall.goal) result={status:'no_autorizado'};
+            else if(!comparacionInicial?.huboRespuesta || turnoComercial<=comparacionInicial.antesDeRespuesta || ultimoTurnoComparado!==turnoComercial)
+              result={status:'negociacion_pendiente',nota:'Pide una mejora concreta, escucha la respuesta y vuelve a comparar antes de cerrar.'};
             else if(phoneCall.simulated) result={status:'rechazo_simulado'};
             else {
               try { await onReject(); result={status:'cierre_solicitado'}; }

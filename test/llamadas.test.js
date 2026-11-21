@@ -62,3 +62,10 @@ require('node:test')('solo devuelve la condición solicitada del sector y omite 
   assert.equal(ask('luz','direccion','¿Cuál es la dirección?'),null);
   assert.equal(ask('luz','compania','¿Qué compañía de fibra tienes?'),null);
 });
+require('node:test')('la negociación distingue promoción, falta de condiciones y respuesta final',()=>{
+  const assert=require('node:assert/strict'), {siguientePaso}=require('../ofertas');
+  assert.match(siguientePaso('Interesa','telecomunicaciones','solo los primeros tres meses',false),/todo el plazo/);
+  assert.match(siguientePaso('Faltan datos','energía','le mejoramos el precio',false),/aclara/);
+  assert.match(siguientePaso('Interesa','energía','es definitiva',true),/por escrito/);
+  assert.match(siguientePaso('No interesa','energía','es definitiva',true),/declina/);
+});
