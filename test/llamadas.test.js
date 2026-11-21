@@ -44,3 +44,21 @@ test('no avisa si falla el disco; no confunde el guardado con la entrega', async
     assert.deepEqual(rec,{...item,status:'message_saved',telegram:esperado});
   }
 });
+const {datoComercial}=require('../criterio-llamada');
+require('node:test')('solo devuelve la condición solicitada del sector y omite identificadores de los paquetes',()=>{
+  const assert=require('node:assert/strict');
+  const invoices=[
+    {category:'Luz',provider:'Eléctrica Demo',terms:['Producto: Plan Fijo','Potencia contratada: 3,4 kW Punta y 2 kW Valle','0,12 €/kWh (45 kWh = 5,40 €)']},
+    {category:'Fibra + 2 móviles',provider:'Demo Red',price:'45 €/mes',terms:['Fibra 1 Gbps y móvil 600000000 con GB ilimitados']}
+  ];
+  const ask=(s,c,t)=>datoComercial(s,c,'oferta de '+s+' '+t,t,invoices);
+  assert.equal(ask('luz','compania','¿Con qué compañía estás?'),'Eléctrica Demo');
+  assert.equal(ask('luz','tarifa','¿Qué tarifa tienes?'),'Plan Fijo');
+  assert.equal(ask('luz','consumo','¿Cuánto consumiste?'),'45 kWh');
+  assert.equal(ask('luz','potencia','¿Qué potencia tienes?'),'3,4 kW Punta, 2 kW Valle');
+  assert.equal(ask('telefonia','cuota','¿Cuánto paga de fibra?'),'45 €/mes');
+  assert.doesNotMatch(ask('telefonia','paquete','¿Qué incluye la fibra?'),/600000000/);
+  assert.equal(ask('luz','potencia','¿Cuál es tu DNI?'),null);
+  assert.equal(ask('luz','direccion','¿Cuál es la dirección?'),null);
+  assert.equal(ask('luz','compania','¿Qué compañía de fibra tienes?'),null);
+});

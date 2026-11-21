@@ -36,20 +36,41 @@ function pistas(text,{tasks,profile,memory}) {
     .flatMap(s=>String(s||'').split(/[\n;]+/)).filter(s=>matches.some(re=>re.test(s)));
   return [...new Set(lines.map(s=>datosParaVoz(s).trim().slice(0,180)))].slice(0,3);
 }
-const sectores={luz:/\b(luz|electricidad|el[eé]ctrica|energ[ií]a|kwh|kilovatio)\b/i,telefonia:/\b(fibra|telefon[ií]a|m[oó]vil(?:es)?|internet|telecomunicaciones)\b/i};
-function datoComercial(sector,campo,conversation,turn,invoices,profile) {
+const sectores={luz:/\b(luz|electricidad|el[eé]ctrica|energ[ií]a|kwh|kilovatios?)\b/i,telefonia:/\b(fibra|telefon[ií]a|tel[eé]fono|m[oó]vil(?:es)?|internet|telecomunicaciones)\b/i};
+const preguntas={
+  compania:/compañ[ií]a|operador|proveedor|comercializadora|con qui[eé]n|empresa/i,
+  tarifa:/tarifa|plan|producto/i, potencia:/potencia|kilovatios? contratados/i,
+  consumo:/consum|gast.*(?:kwh|gigas)|us[ao].*gigas/i,
+  kwh:/precio|pag[ao]|kwh|kilovatio|tarifa/i,
+  cuota:/precio|pag[ao]|pag[aá]is|cuota|cuesta|coste|mensual|importe/i,
+  paquete:/tien[eé]|contratad|incluy|paquete|servicios|l[ií]neas|velocidad|incluid/i,
+};
+const herramientaComercial={name:'dato_comercial_pedido',description:'Consulta solo la condición del contrato que acaba de preguntar el comercial de ese sector.',parameters:{type:'OBJECT',properties:{sector:{type:'STRING',enum:Object.keys(sectores)},campo:{type:'STRING',enum:Object.keys(preguntas)}},required:['sector','campo']}};
+function etiqueta(value) {
+  // Solo nombres breves, no identificadores, teléfonos, direcciones ni notas libres.
+  const s=String(value||'').trim();
+  return /^[\p{L}\d ()+.-]{2,75}$/u.test(s)&&!/\d{4}|(?:\d[\s.-]*){7}|\b(?:CUPS|DNI|NIE|IBAN|ES\s*\d|titular|direcci[oó]n|cuenta|cliente|domicilio|calle|avenida|contraseña|c[oó]digo)\b/i.test(s)?s:null;
+}
+function datoComercial(sector,campo,conversation,turn,invoices) {
   if(!Object.hasOwn(sectores,sector)||!sectores[sector].test(conversation)||
-    !/(?:[¿?]|\b(?:cu[aá]nto|cu[aá]l|qu[eé]|d[oó]nde|puede|podr[ií]a|dime|d[ií]game|necesito|facilite|indique|me da)\b)/i.test(turn)) return null;
-  if(campo==='direccion' && /direcci[oó]n|domicilio/i.test(turn))
-    return datosParaVoz(String(profile||'').match(/^\s*Dirección comercial autorizada:\s*([^\r\n]+)/im)?.[1]||'').slice(0,180)||null;
-  const invoice=invoices.find(x=>sectores[sector].test(x.category));
-  if(!invoice) return null;
-  const terms=invoice.terms.join(' ');
-  if(sector==='luz'&&campo==='kwh'&&/precio|pag[ao]|kwh|kilovatio|tarifa/i.test(turn))
-    return terms.match(/\d+(?:[.,]\d+)?\s*(?:€|euros?)\s*\/\s*kwh\b/i)?.[0]||null;
-  if(sector==='telefonia'&&campo==='cuota'&&/precio|pag[ao]|cuota|cuesta|coste/i.test(turn))
-    return invoice.price.match(/\d+(?:[.,]\d+)?\s*(?:€|euros?)(?:\s*\/\s*mes)?/gi)?.join(' + ')||null;
-  if(sector==='telefonia'&&campo==='paquete'&&/tien[eé]|contratad|incluy|paquete|servicios|l[ií]neas|velocidad/i.test(turn))
+     !Object.hasOwn(preguntas,campo)||!preguntas[campo].test(turn)||
+     !/(?:[¿?]|\b(?:cu[aá]nt[oa]s?|cu[aá]l(?:es)?|qu[eé]|qui[eé]n|puede|podr[ií]a|dime|d[ií]game|necesito|facilite|indique|me da)\b)/i.test(turn)) return null;
+  if(Object.entries(sectores).some(([otro,re])=>otro!==sector&&re.test(turn)&&!sectores[sector].test(turn))) return null;
+  const candidatas=invoices.filter(x=>sectores[sector].test(x.category));
+  if(candidatas.length!==1) return null;
+  const invoice=candidatas[0], lines=invoice.terms||[], terms=lines.join(' ');
+  const valores=(s,re)=>[...new Set(s.match(re)||[])].join(', ')||null;
+  if(campo==='compania') return etiqueta(invoice.provider);
+  if(campo==='tarifa') return etiqueta(lines.find(s=>/^(?:producto|tarifa|plan)\s*:/i.test(s))?.split(/:\s*/).slice(1).join(':'));
+  if(campo==='cuota') return valores(invoice.price||'',/\d+(?:[.,]\d+)?\s*(?:€|euros?)(?:\s*\/\s*mes)?/gi);
+  if(sector==='luz'&&campo==='potencia') return valores(terms,/\b\d+(?:[.,]\d+)?\s*kw\b(?:\s+(?:punta|valle|llano|P[123]))?/gi);
+  if(sector==='luz'&&campo==='kwh') return valores(terms,/\b\d+(?:[.,]\d+)?\s*(?:€|euros?)\s*\/\s*kwh\b/gi);
+  if(campo==='consumo'){
+    const line=lines.find(s=>/consum/i.test(s)) || (sector==='luz'&&lines.find(s=>/\bkwh\s*=/i.test(s))) || '';
+    return valores(line,sector==='luz'?/\b\d+(?:[.,]\d+)?\s*kwh\b/gi:/\b\d+(?:[.,]\d+)?\s*gb\b/gi);
+  }
+  if(sector==='luz'&&campo==='paquete') return etiqueta(lines.find(s=>/^servicios (?:incluidos|añadidos):/i.test(s))?.split(':')[1]?.split('(')[0]);
+  if(sector==='telefonia'&&campo==='paquete')
     return [terms.match(/fibra\s+\d+(?:[.,]\d+)?\s*[gm]b(?:ps)?/i)?.[0],
       invoice.category.match(/\d+\s+(?:m[oó]viles|l[ií]neas)/i)?.[0],/televisi[oó]n|\bTV\b/i.test(terms)?'TV':null,
       /GB ilimitados/i.test(terms)?'datos ilimitados en la línea correspondiente':null].filter(Boolean).join(', ')||null;
@@ -76,4 +97,4 @@ function seguimientosDelNumero(notes,number) {
   const numero=numeroSeguimiento(number);
   return numero?notes.filter(n=>n.numero===numero).slice(0,3).map(({fecha,asunto,paso,cuando})=>({fecha,asunto,paso,cuando})):[];
 }
-module.exports={disponibilidad,pistas,datoComercial,experiencia,lecciones,notaSeguimiento,seguimientosDelNumero};
+module.exports={disponibilidad,pistas,datoComercial,herramientaComercial,experiencia,lecciones,notaSeguimiento,seguimientosDelNumero};

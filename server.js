@@ -1012,7 +1012,7 @@ FUNCIONES PRINCIPALES DE SECRETARIA (USA SIEMPRE LAS HERRAMIENTAS CORRESPONDIENT
    Tienes acceso al contexto real de los contratos actuales de ${appConfig.ownerName}:
     ${contextoContratos(appConfig.contractsContext || DEFAULT_CONTRACTS_CONTEXT)}
     Perfil: ${datosParaVoz(appConfig.lifeContext)}. ${permiso}
-    - Pregunta por las condiciones de SU oferta, por ejemplo el precio final con impuestos. Compara internamente; no cites cifras, servicios ni datos de contacto del titular. Si no interesa, declina sin revelar el motivo privado; si interesa, toma nota en un recado ('take_message').
+    - Pregunta por las condiciones de SU oferta y compara internamente. Si no interesa, declina; si interesa, toma nota en un recado ('take_message').
 7. REGLAS ADICIONALES DE ${appConfig.ownerName.toUpperCase()}:
    ${appConfig.filterRules}
 8. ÓRDENES EN VIVO DEL PROPIETARIO:
@@ -1266,8 +1266,10 @@ function createGeminiLiveSession({
   let isSetupComplete = false, checksMade=0;
   const contrastes=[];
   const registerTable=phoneCall?.simulated && phoneCall.goal ? makeTableRecorder() : null;
-  let heard='', offerVerdict='', comparisons=0;
+  let heard='', recentQuestion='', offerVerdict='', comparisons=0;
+  const consultarCondicion=args=>({dato:criterio.datoComercial(args?.sector,args?.campo,heard,recentQuestion,invoiceBriefs())});
   const privateTools=[
+    criterio.herramientaComercial,
     ...(onKey?[{name:'pulsar_tecla',description:'Envía una tecla anunciada por la centralita para navegar por el menú.',parameters:{type:'OBJECT',properties:{tecla:{type:'STRING',enum:[...'0123456789*#']}},required:['tecla']}}]:[]),
     {name:'guardar_seguimiento',description:'Recuerda un acuerdo explícito para una próxima llamada al mismo número.',parameters:{type:'OBJECT',properties:{asunto:{type:'STRING'},paso:{type:'STRING'},cuando:{type:'STRING'},responsable:{type:'STRING',enum:['Clara','interlocutor','sin aclarar']},fecha:{type:'STRING',description:'AAAA-MM-DD en Madrid si se conoce'},hora:{type:'STRING',description:'HH:MM en Madrid'}},required:['asunto','paso','cuando','responsable']}},
     {name:'cerrar_seguimiento',description:'Cierra un seguimiento concreto del mismo número si el asunto se ha resuelto.',parameters:{type:'OBJECT',properties:{asunto:{type:'STRING',description:'Asunto exacto de la nota'},resultado:{type:'STRING'}},required:['asunto','resultado']}},
@@ -1310,7 +1312,7 @@ Si te interrumpen, calla y escucha, como haría una persona. Después responde a
 En una llamada entrante, escucha qué relación dice tener con Fernando y qué quiere que ocurra. El nombre de la empresa no te dice el motivo. Si dice «llamo por la luz», pregunta «¿Es por algo de la factura o me llamas para ofrecer otra tarifa?». Si ya dijo «hay un error en la última factura», pregunta qué error han visto, no por el precio del kWh. Si dice «te mejoramos lo que tienes» sin concretar, pregunta qué producto ofrecen; si explicó el producto pero no a quién representa, pregunta de qué empresa llama.
 Elige la siguiente pregunta por lo que cambie la decisión de Fernando. En fibra con precio promocional, por ejemplo, interesa cuánto cuesta después; en un seguro, qué cubre; si un cliente pide presupuesto, interesa para qué trabajo lo necesita, no qué vende. Si un amigo deja un recado o un repartidor ya ha explicado la incidencia, atiende eso directamente. Son ejemplos, no un cuestionario. Si una supuesta gestión resulta ser una venta, cambia el enfoque y actualiza la ficha con classify_call. Registra lo que te han dicho sin inventar nombres, productos ni motivos.
 Usa los servicios contratados como contexto privado. Si mencionan un proveedor conocido, no des por hecho que quieren vender ni que realmente llaman de allí. Si el motivo es ambiguo, pregunta «¿Es por una gestión que ya está en marcha o es una oferta nueva?». Si ya explicaron el motivo, ve directamente a él. No enumeres servicios ni confirmes pólizas, coberturas o datos de cuenta al interlocutor.
-Muestra curiosidad por lo que te cuentan, no hagas un interrogatorio. Recoge un detalle de su última frase y pregunta solo por la pieza que falta. Si preguntan «¿Cuánto paga ahora?», puedes decir «Si me dices en cuánto se quedaría al mes, se lo puedo trasladar». Si piden confirmar datos para explicar un trámite, pregunta qué gestión puedes anotarle sin verificarlos. Si no quieren seguir, ofrece recoger un contacto o una referencia y despídete sin insistir. No finjas interés en contratar.
+Muestra curiosidad por lo que te cuentan, no hagas un interrogatorio. Recoge un detalle de su última frase y pregunta solo por la pieza que falta. Si piden confirmar datos personales para explicar un trámite, pregunta qué gestión puedes anotarle sin verificarlos. Si no quieren seguir, ofrece recoger un contacto o una referencia y despídete sin insistir. No finjas interés en contratar.
 Eres Clara, asistente virtual; si te preguntan, dilo con naturalidad. Haz una sola pregunta cada vez y pide repetir solo la parte dudosa. Para un comercial que ya dijo nombre, empresa y producto, pregunta por la primera condición que falte, por ejemplo el precio final. No repitas lo que ya sabes. Humor solo si encaja; nunca en urgencias, duelo o enfado. Si hay peligro inmediato, orienta a emergencias.
 Separa recado guardado, aviso enviado y cita anotada. No prometas ninguna acción antes del resultado. Con message_not_saved explica que el recado no se guardó. Si se guardó pero el aviso no consta como enviado, dilo con naturalidad, por ejemplo «Te lo dejo apuntado; lo verá en cuanto mire los recados». Un aviso enviado tampoco significa que lo haya leído.
 Agenda personal: antes de ofrecer o confirmar una hora consulta consultar_agenda con fecha exacta y hora de Madrid. Si está ocupada pide otra hora y compruébala. Si no puedes verificarla, no la ofrezcas como libre. No reveles motivos de ocupación. Confirma que una cita quedó anotada solo tras el éxito de schedule_appointment.
@@ -1328,7 +1330,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
         },
         inputAudioTranscription: {},
         outputAudioTranscription: {},
-        tools: phoneCall ? [{functionDeclarations:[...privateTools,...ofertas.searchTool[0].functionDeclarations,agenda.tool,...(registerTable?[mesa.tool]:[]),...GEMINI_TOOLS[0].functionDeclarations.filter(f=>!phoneCall.simulated||f.name!=='schedule_appointment')]}] : [{functionDeclarations:[...GEMINI_TOOLS[0].functionDeclarations,agenda.tool]}],
+        tools: phoneCall ? [{functionDeclarations:[...privateTools,...ofertas.searchTool[0].functionDeclarations,agenda.tool,...(registerTable?[mesa.tool]:[]),...GEMINI_TOOLS[0].functionDeclarations.filter(f=>!phoneCall.simulated||f.name!=='schedule_appointment')]}] : [{functionDeclarations:[...GEMINI_TOOLS[0].functionDeclarations,agenda.tool,criterio.herramientaComercial]}],
       },
     };
     geminiWs.send(JSON.stringify(setupMessage));
@@ -1390,6 +1392,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
 
         if (content.inputTranscription?.text) {
           heard=(heard+' '+content.inputTranscription.text).slice(-7000);
+          recentQuestion=(recentQuestion+content.inputTranscription.text).slice(-1000);
           onTranscript?.('caller', content.inputTranscription.text);
         }
 
@@ -1400,6 +1403,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
         if (content.interrupted) {
           onInterrupted?.();
         }
+        if(content.turnComplete) recentQuestion='';
       }
 
       // Handle asynchronous NON_BLOCKING tool calls
@@ -1408,6 +1412,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
         for (const fc of msg.toolCall.functionCalls) {
           let result={nota:'Consulta no disponible.',fuentes:[]};
           if(fc.name==='consultar_agenda') result=await checkSlot(fc.args||{});
+          else if(fc.name==='dato_comercial_pedido') result=consultarCondicion(fc.args);
           else if(fc.name==='pulsar_tecla'&&onKey) result=onKey(fc.args?.tecla);
           else if(fc.name==='guardar_seguimiento') {
             if(phoneCall.simulated) result={estado:'simulado'};
@@ -1486,7 +1491,9 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
         const functionResponses = [];
         for (const call of msg.toolCall.functionCalls) {
           const args = call.args || {};
-          if (call.name === 'classify_call') {
+          if (call.name === 'dato_comercial_pedido') {
+            functionResponses.push({id:call.id,name:call.name,response:consultarCondicion(args)});
+          } else if (call.name === 'classify_call') {
             onClassification?.(args);
             functionResponses.push({
               id: call.id,
@@ -1633,12 +1640,11 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
     sendWhisper(instructionText) {
       if (geminiWs.readyState !== WebSocket.OPEN) return;
       if (phoneCall && /^verificado:\s*dni\s*$/iu.test(instructionText.trim())) {
-        instructionText = appConfig.ownerDni ? `El titular ha verificado al interlocutor y el trámite por un canal independiente. Solo si ya te han pedido el DNI y es necesario para este trámite, el dato autorizado es ${appConfig.ownerDni}.` : 'No consta el DNI.';
+        instructionText = 'No facilites ni confirmes el DNI.';
       }
       const sector = phoneCall && /^verificado:\s*(luz|telefonía)\s*$/iu.exec(instructionText.trim());
       if (sector) {
-        const match = sector[1].toLowerCase()==='luz' ? /electric|energ[ií]a|\bluz\b/i : /telecom|telefon|fibra|m[oó]vil/i;
-        instructionText = `El titular ha verificado este trámite de ${sector[1]}. Responde solo sobre la empresa y gestión verificadas, si te preguntan. Facturas del sector: ${JSON.stringify(invoiceBriefs().filter(i=>match.test(i.category)))}`;
+        instructionText = permiso;
       }
       geminiWs.send(
         JSON.stringify({
