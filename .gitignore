@@ -3,4 +3,5 @@ config.json
 secretary_data.json
 config.json.tmp
 secretary_data.json.tmp
+avisos-privados.json*
 .env
