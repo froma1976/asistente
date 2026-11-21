@@ -69,3 +69,13 @@ require('node:test')('la negociación distingue promoción, falta de condiciones
   assert.match(siguientePaso('Interesa','energía','es definitiva',true),/por escrito/);
   assert.match(siguientePaso('No interesa','energía','es definitiva',true),/declina/);
 });
+require('node:test')('una rebaja no acaba el regateo; una negativa parcial tampoco',()=>{
+  const assert=require('node:assert/strict'), {sinMargen,siguientePaso}=require('../ofertas');
+  for(const replica of ['Puedo rebajarlo algo más','No puedo quitar la permanencia','Sí, le puedo hacer otro descuento']){
+    assert.equal(sinMargen(replica),false);
+    assert.match(siguientePaso('Interesa','telecomunicaciones',replica,false),/ellos pongan el siguiente precio/);
+  }
+  assert.equal(sinMargen('Es nuestra última oferta.'),true);
+  assert.equal(sinMargen('Sí.','¿Es su oferta definitiva?'),true);
+  assert.equal(sinMargen('Sí.','¿Puedes mejorarla?'),false);
+});

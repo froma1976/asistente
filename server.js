@@ -1231,7 +1231,7 @@ Si una centralita ofrece una tecla de navegación que encaja con el encargo, usa
 Para un recado usa take_message. Para una cita nueva consulta la agenda y regístrala solo si se acuerda. Para cambios o cancelaciones toma un recado; no crees una cita nueva.
 Para alojamiento comprueba entrada y salida exactas con check_availability; recoge únicamente solicitudes pendientes, nunca prometas una reserva.
 Cuando quede claro que hay una oferta y conozcas empresa y producto, avisa brevemente con tus propias palabras y ejecuta consultar_tarifa_publica con la marca y el tipo de producto y después comparar_oferta. Retoma tú el turno. Cita brevemente el proveedor y la condición pública relevante para plantear una pregunta concreta: impuestos, cuota fija, permanencia, cobertura o precio tras la promoción. Distingue lo que ofrece este interlocutor de lo publicado. Si no hay referencia equivalente o falla internet, dilo, pide las condiciones por escrito y no inventes ahorro.
-Ante una propuesta comercial, negocia para el titular. Señala el punto débil concreto y pide una mejora verificable, aunque la primera oferta ya interese. «Ese precio dura tres meses. ¿Me lo puedes mantener todo el año con las mismas líneas?» es un ejemplo, no un guion. Usa una referencia pública solo si es equivalente. No inventes ofertas rivales ni reveles el presupuesto máximo del titular. Si faltan datos, pregunta primero; no des por hecho que hay extras o permanencia. Espera la respuesta. Si cambian las condiciones, vuelve a comparar la última propuesta, sin mezclar versiones. Si es su mejor oferta, no insistas: si interesa, pide condiciones finales por escrito y guarda recado; si no mejora, declina. No aceptes contratos, grabaciones de conformidad ni cambios. Si no quieren negociar, respétalo.
+Ante una oferta, regatea por turnos: el comercial pone TODOS los precios. Nunca digas cuánto queremos pagar ni sugieras una cifra, rango, descuento o presupuesto, tampoco repitas su precio como objetivo. Si pregunta «¿en cuánto tendríamos que dejarlo?», devuelve la iniciativa: «Con esa subida después de la promoción no veo la ventaja. ¿Qué cuota definitiva me puedes ofrecer?» Adapta la objeción a lo que realmente ha dicho. Una factura actual autorizada no es un objetivo de negociación. No inventes alternativas. Espera: si rebaja, reconoce la mejora sin aceptarla, comprueba qué conserva y busca otra rebaja o un coste que puedan quitar. Una negativa a quitar la permanencia no impide negociar la cuota. Vuelve a comparar cada versión; «Interesa» es una valoración privada, no una orden de cerrar. No repitas la misma petición en bucle. Si se estanca, pregunta si es su oferta definitiva; cuando confirme que no hay margen, pide la mejor versión por escrito si merece la pena, o declina. Respeta que quieran terminar. No contrates ni aceptes cambios.
 Mejoras de llamadas reales anteriores, solo cuando encajen en esta gestión: ${criterio.experiencia(secretaryData.history).join(' ')||'ninguna todavía'}.`;
 }
 
@@ -1265,7 +1265,7 @@ function createGeminiLiveSession({
   let isSetupComplete = false, checksMade=0;
   const contrastes=[];
   const registerTable=phoneCall?.simulated && phoneCall.goal ? makeTableRecorder() : null;
-  let heard='', recentQuestion='', offerVerdict='', comparisons=0;
+  let heard='', recentQuestion='', offerVerdict='', ofertaFinal=false;
   const consultarCondicion=args=>({dato:criterio.datoComercial(args?.sector,args?.campo,heard,recentQuestion,invoiceBriefs())});
   const privateTools=[
     criterio.herramientaComercial,
@@ -1448,22 +1448,29 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
             result={pistas:criterio.pistas(phoneCall.goal||heard,{tasks:secretaryData.ownerTasks,profile:appConfig.lifeContext,memory:callerMemory?.summaryText})};
           }
           else if(fc.name==='comparar_oferta') {
+            if(ultimoTurnoComparado===turnoComercial && comparacionInicial?.sector===fc.args?.sector){
+              functionResponses.push({id:fc.id,name:fc.name,response:{veredicto:offerVerdict,nota:'Ya comparada esta versión. Espera la respuesta del comercial antes de volver a comparar.'}});
+              continue;
+            }
             ultimoTurnoComparado=turnoComercial;
             const rebatida=comparacionInicial?.sector===fc.args?.sector &&
               comparacionInicial.huboRespuesta && turnoComercial>comparacionInicial.antesDeRespuesta;
             if(!comparacionInicial || comparacionInicial.sector!==fc.args?.sector)
               comparacionInicial={sector:fc.args?.sector,antesDeRespuesta:turnoComercial,huboRespuesta:false};
+            const ultimaRespuesta=dialogoOferta.findLast(t=>t.role==='caller')?.text||'';
+            const anterior=dialogoOferta.slice(0,dialogoOferta.findLastIndex(t=>t.role==='caller')).findLast(t=>t.role==='assistant');
+            ofertaFinal=rebatida && ofertas.sinMargen(ultimaRespuesta,anterior?.text);
             const sector={energía:/energ|electric|\bluz\b/i,telecomunicaciones:/telecom|telefon|fibra|m[oó]vil/i}[fc.args?.sector];
             offerVerdict='Faltan datos';
             const invoices=sector instanceof RegExp?invoiceBriefs().filter(x=>sector.test(x.category)):[];
             const checks=contrastes.filter(x=>x.sector===fc.args?.sector);
             let argumento='';
-            if((invoices.length||checks.length) && heard.trim() && comparisons++<4) {
+            if((invoices.length||checks.length) && heard.trim()) {
               const review=await ofertas.summarize(apiKey,{transcript:dialogoOferta,checks},invoices,true).catch(()=>null);
               if(['Interesa','No interesa'].includes(review?.veredicto)) offerVerdict=review.veredicto;
-              if(typeof review?.argumento==='string' && !rebatida) argumento=review.argumento.slice(0,450);
+              if(typeof review?.argumento==='string' && !ofertaFinal) argumento=review.argumento.slice(0,450);
             }
-            result={veredicto:offerVerdict,argumento,siguientePaso:ofertas.siguientePaso(offerVerdict,fc.args?.sector,heard.slice(-1000),rebatida)};
+            result={veredicto:offerVerdict,argumento,siguientePaso:ofertas.siguientePaso(offerVerdict,fc.args?.sector,ultimaRespuesta,ofertaFinal)};
           }
           else if(fc.name==='check_availability') {
             result={estado:criterio.disponibilidad(fc.args||{},secretaryData.blockedDates,secretaryData.reservations),tarifa:appConfig.nightlyRate||'120 €/noche'};
@@ -1479,7 +1486,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
           }
           else if(fc.name==='reject_and_hangup') {
             if(offerVerdict!=='No interesa'||phoneCall.goal) result={status:'no_autorizado'};
-            else if(!comparacionInicial?.huboRespuesta || turnoComercial<=comparacionInicial.antesDeRespuesta || ultimoTurnoComparado!==turnoComercial)
+            else if(!ofertaFinal || ultimoTurnoComparado!==turnoComercial)
               result={status:'negociacion_pendiente',nota:'Pide una mejora concreta, escucha la respuesta y vuelve a comparar antes de cerrar.'};
             else if(phoneCall.simulated) result={status:'rechazo_simulado'};
             else {
