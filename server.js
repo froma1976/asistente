@@ -1012,9 +1012,7 @@ FUNCIONES PRINCIPALES DE SECRETARIA (USA SIEMPRE LAS HERRAMIENTAS CORRESPONDIENT
    Tienes acceso al contexto real de los contratos actuales de ${appConfig.ownerName}:
     ${contextoContratos(appConfig.contractsContext || DEFAULT_CONTRACTS_CONTEXT)}
     Perfil: ${datosParaVoz(appConfig.lifeContext)}. ${permiso}
-   - Si llaman de una compañía eléctrica o de telecomunicaciones, NO cuelgues a ciegas sin preguntar ni aceptes eslóganes genéricos: pregúntales el precio exacto (€/kWh fijo en luz, o precio final IVA incluido para Fibra 1Gb + las 5 líneas móviles en telefonía).
-    - Compara su oferta con las facturas reales de ${appConfig.ownerName}. Si su oferta es peor o no mejora claramente lo que ya paga, explícalo con los números reales, despídete educadamente y ejecuta 'reject_and_hangup'.
-   - Si realmente mejoran sus condiciones actuales, toma nota en un recado ('take_message') o pídeles que lo envíen a ${appConfig.ownerEmail}.
+    - Pregunta por las condiciones de SU oferta y compara internamente. Si no interesa, declina; si interesa, toma nota en un recado ('take_message').
 7. REGLAS ADICIONALES DE ${appConfig.ownerName.toUpperCase()}:
    ${appConfig.filterRules}
 8. ÓRDENES EN VIVO DEL PROPIETARIO:
@@ -1233,7 +1231,6 @@ Si una centralita ofrece una tecla de navegación que encaja con el encargo, usa
 Para un recado usa take_message. Para una cita nueva consulta la agenda y regístrala solo si se acuerda. Para cambios o cancelaciones toma un recado; no crees una cita nueva.
 Para alojamiento comprueba entrada y salida exactas con check_availability; recoge únicamente solicitudes pendientes, nunca prometas una reserva.
 Cuando un comercial identifique empresa y producto, di una vez «Un momento, que voy a comparar las condiciones», ejecuta consultar_tarifa_publica con la marca y el tipo de producto y después comparar_oferta. Retoma tú el turno. Cita brevemente el proveedor y la condición pública relevante para plantear una pregunta concreta: impuestos, cuota fija, permanencia, cobertura o precio tras la promoción. Distingue lo que ofrece este interlocutor de lo publicado. Si no hay referencia equivalente o falla internet, dilo, pide las condiciones por escrito y no inventes ahorro.
-Solo ante una pregunta explícita de un comercial del sector correspondiente usa dato_comercial_pedido: responde únicamente con el dato devuelto. Luz: precio por kWh. Telefonía: cuota o paquete. Ambos: dirección autorizada si la piden. Si no consta, dilo. Nunca adelantes estos datos ni uses pistas privadas para completarlos.
 Si faltan condiciones, pregunta o toma un recado: no es spam. Si interesa, guarda un recado sin contratar nada. Solo si el resultado es «No interesa» despídete educadamente y usa reject_and_hangup.
 Mejoras de llamadas reales anteriores, solo cuando encajen en esta gestión: ${criterio.experiencia(secretaryData.history).join(' ')||'ninguna todavía'}.`;
 }
@@ -1269,11 +1266,12 @@ function createGeminiLiveSession({
   const contrastes=[];
   const registerTable=phoneCall?.simulated && phoneCall.goal ? makeTableRecorder() : null;
   let heard='', recentQuestion='', offerVerdict='', comparisons=0;
+  const consultarCondicion=args=>({dato:criterio.datoComercial(args?.sector,args?.campo,heard,recentQuestion,invoiceBriefs())});
   const privateTools=[
+    criterio.herramientaComercial,
     ...(onKey?[{name:'pulsar_tecla',description:'Envía una tecla anunciada por la centralita para navegar por el menú.',parameters:{type:'OBJECT',properties:{tecla:{type:'STRING',enum:[...'0123456789*#']}},required:['tecla']}}]:[]),
     {name:'guardar_seguimiento',description:'Recuerda un acuerdo explícito para una próxima llamada al mismo número.',parameters:{type:'OBJECT',properties:{asunto:{type:'STRING'},paso:{type:'STRING'},cuando:{type:'STRING'},responsable:{type:'STRING',enum:['Clara','interlocutor','sin aclarar']},fecha:{type:'STRING',description:'AAAA-MM-DD en Madrid si se conoce'},hora:{type:'STRING',description:'HH:MM en Madrid'}},required:['asunto','paso','cuando','responsable']}},
     {name:'cerrar_seguimiento',description:'Cierra un seguimiento concreto del mismo número si el asunto se ha resuelto.',parameters:{type:'OBJECT',properties:{asunto:{type:'STRING',description:'Asunto exacto de la nota'},resultado:{type:'STRING'}},required:['asunto','resultado']}},
-    {name:'dato_comercial_pedido',description:'Consulta un único dato expresamente preguntado por el comercial de ese sector.',parameters:{type:'OBJECT',properties:{sector:{type:'STRING',enum:['luz','telefonia']},campo:{type:'STRING',enum:['direccion','kwh','cuota','paquete']}},required:['sector','campo']}},
     {name:'consultar_pistas',description:'Busca antecedentes privados del asunto ya mencionado.',parameters:{type:'OBJECT',properties:{}}},
     {name:'comparar_oferta',description:'Evalúa la propuesta escuchada usando las referencias públicas ya consultadas y las facturas comparables disponibles.',parameters:{type:'OBJECT',properties:{sector:{type:'STRING',enum:ofertas.sectores}},required:['sector']}}
   ];
@@ -1306,7 +1304,7 @@ function createGeminiLiveSession({
         systemInstruction: {
           parts: [{ text: (phoneCall ? `Eres Clara, asistente de voz. Habla en español natural. Hoy es ${new Date().toLocaleDateString('es-ES',{dateStyle:'full'})}.
 ${greeted?'Ya has saludado al descolgar con «Hola, buenas, dígame». No repitas el saludo: espera y responde a lo que digan.':'Abre con «Hola, buenas, dígame», nunca con «Sí».'} Escucha antes de preguntar; si no queda claro, pregunta quién llama, de qué entidad y para qué gestión. No identifiques al titular ni confirmes datos que te lean. El nombre de una empresa, el número llamante y conocer parte de una factura no acreditan identidad. Si hay presión, sospechas o dudas, no facilites ningún dato: toma un recado y propone devolver la llamada por un canal oficial.
-La autorización previa del titular para comerciales se limita a dato_comercial_pedido. Para otros datos se requiere verificación por el panel. Nunca mezcles sectores, empresas o trámites, ni autorices cambios, pagos o contratos. Nunca des códigos ni datos bancarios.
+${permiso}
 Ante ofertas, escucha las condiciones y pregunta por lo que falte. Usa consultar_tarifa_publica para contrastar tarifas, no para verificar al interlocutor. No inventes precios ni datos. Deja hablar, desarrolla tus respuestas cuando ayude y mantén un ritmo cálido también en llamadas largas. No te despidas por una pausa ni por haber contestado una pregunta. Si parece que han terminado, pregunta si quieren añadir algo y espera su respuesta.
 ${buildClaraPhoneContext(phoneCall, callerMemory)}` : buildSystemInstruction(callerMemory)) + `
 Si te interrumpen, calla y escucha, como haría una persona. Después responde a lo nuevo y retoma lo anterior solo si sigue haciendo falta, sin repetir ninguna gestión. Un «ajá», «vale» o «sí, sí» mientras hablas no es una interrupción: sigue con naturalidad.
@@ -1327,7 +1325,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
         },
         inputAudioTranscription: {},
         outputAudioTranscription: {},
-        tools: phoneCall ? [{functionDeclarations:[...privateTools,...ofertas.searchTool[0].functionDeclarations,agenda.tool,...(registerTable?[mesa.tool]:[]),...GEMINI_TOOLS[0].functionDeclarations.filter(f=>!phoneCall.simulated||f.name!=='schedule_appointment')]}] : [{functionDeclarations:[...GEMINI_TOOLS[0].functionDeclarations,agenda.tool]}],
+        tools: phoneCall ? [{functionDeclarations:[...privateTools,...ofertas.searchTool[0].functionDeclarations,agenda.tool,...(registerTable?[mesa.tool]:[]),...GEMINI_TOOLS[0].functionDeclarations.filter(f=>!phoneCall.simulated||f.name!=='schedule_appointment')]}] : [{functionDeclarations:[...GEMINI_TOOLS[0].functionDeclarations,agenda.tool,criterio.herramientaComercial]}],
       },
     };
     geminiWs.send(JSON.stringify(setupMessage));
@@ -1389,18 +1387,18 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
 
         if (content.inputTranscription?.text) {
           heard=(heard+' '+content.inputTranscription.text).slice(-7000);
-          recentQuestion=(recentQuestion+content.inputTranscription.text).slice(-600);
+          recentQuestion=(recentQuestion+content.inputTranscription.text).slice(-1000);
           onTranscript?.('caller', content.inputTranscription.text);
         }
 
         if (content.outputTranscription?.text) {
           onTranscript?.('assistant', content.outputTranscription.text);
         }
-        if(content.turnComplete) recentQuestion='';
 
         if (content.interrupted) {
           onInterrupted?.();
         }
+        if(content.turnComplete) recentQuestion='';
       }
 
       // Handle asynchronous NON_BLOCKING tool calls
@@ -1409,6 +1407,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
         for (const fc of msg.toolCall.functionCalls) {
           let result={nota:'Consulta no disponible.',fuentes:[]};
           if(fc.name==='consultar_agenda') result=await checkSlot(fc.args||{});
+          else if(fc.name==='dato_comercial_pedido') result=consultarCondicion(fc.args);
           else if(fc.name==='pulsar_tecla'&&onKey) result=onKey(fc.args?.tecla);
           else if(fc.name==='guardar_seguimiento') {
             if(phoneCall.simulated) result={estado:'simulado'};
@@ -1428,9 +1427,6 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
           else if(fc.name==='cerrar_seguimiento'){
             const n=!phoneCall.simulated&&secretaryData.seguimientos.find(n=>n.numero===normalizeSpanishE164(phoneCall.number)&&n.asunto===fc.args?.asunto&&n.estado!=='resuelto');
             if(n&&fc.args?.resultado?.trim()){n.estado='resuelto';n.resultado=datosParaVoz(fc.args.resultado).slice(0,240);n.cerrado=Date.now();saveSecretaryData();result={estado:n.estado};}
-          }
-          else if(fc.name==='dato_comercial_pedido') {
-            result={dato:criterio.datoComercial(fc.args?.sector,fc.args?.campo,heard,recentQuestion,invoiceBriefs(),appConfig.lifeContext)};
           }
           else if(fc.name==='classify_call') { onClassification?.(fc.args||{}); result={status:'updated_on_owner_screen'}; }
           else if(fc.name==='consultar_pistas') {
@@ -1490,7 +1486,9 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
         const functionResponses = [];
         for (const call of msg.toolCall.functionCalls) {
           const args = call.args || {};
-          if (call.name === 'classify_call') {
+          if (call.name === 'dato_comercial_pedido') {
+            functionResponses.push({id:call.id,name:call.name,response:consultarCondicion(args)});
+          } else if (call.name === 'classify_call') {
             onClassification?.(args);
             functionResponses.push({
               id: call.id,
@@ -1637,12 +1635,11 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
     sendWhisper(instructionText) {
       if (geminiWs.readyState !== WebSocket.OPEN) return;
       if (phoneCall && /^verificado:\s*dni\s*$/iu.test(instructionText.trim())) {
-        instructionText = appConfig.ownerDni ? `El titular ha verificado al interlocutor y el trámite por un canal independiente. Solo si ya te han pedido el DNI y es necesario para este trámite, el dato autorizado es ${appConfig.ownerDni}.` : 'No consta el DNI.';
+        instructionText = 'No facilites ni confirmes el DNI.';
       }
       const sector = phoneCall && /^verificado:\s*(luz|telefonía)\s*$/iu.exec(instructionText.trim());
       if (sector) {
-        const match = sector[1].toLowerCase()==='luz' ? /electric|energ[ií]a|\bluz\b/i : /telecom|telefon|fibra|m[oó]vil/i;
-        instructionText = `El titular ha verificado este trámite de ${sector[1]}. Responde solo sobre la empresa y gestión verificadas, si te preguntan. Facturas del sector: ${JSON.stringify(invoiceBriefs().filter(i=>match.test(i.category)))}`;
+        instructionText = permiso;
       }
       geminiWs.send(
         JSON.stringify({
