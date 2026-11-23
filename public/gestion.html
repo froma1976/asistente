@@ -11,6 +11,7 @@
 <button class="primary">Enviar mensaje</button><span id="answerStatus" role="status"></span></form>
 <hr><div class="actions"><button type="button" id="prepare">Preparar una llamada →</button><a href="/simulacion.html">Probar una llamada sin marcar</a></div></section>
 <section id="calls" hidden><h2>Teléfono</h2><p id="connection">Comprobando el teléfono…</p><p id="cuota-voz" role="status">Consultando saldo de voz…</p><pre id="call"></pre>
+<p><span id="gasto-gemini" role="status">Consultando gasto de Gemini…</span> · <a href="https://aistudio.google.com/usage" target="_blank" rel="noopener">Ver en Google AI Studio</a></p>
 <hr><h3>Nueva llamada</h3><form id="dial"><label for="goal">¿Qué quieres que gestione?</label><textarea name="goal" id="goal" rows="2" required maxlength="2000" placeholder="Pide un presupuesto de seguro de hogar. Averigua el precio anual, las exclusiones y la franquicia."></textarea>
 <label for="number">Número de destino, con prefijo</label><input id="number" name="number" type="tel" required placeholder="+34 600 000 000">
 <button class="primary">Llamar ahora</button><p id="dialStatus" role="status"></p></form>

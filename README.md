@@ -74,3 +74,23 @@ Reiniciar el servicio después de instalar o retirar la credencial.
 La portada consulta los créditos de la suscripción cada minuto mientras está visible.
 Los minutos son una estimación de voz sintetizada con Flash a 500 créditos/minuto;
 las pausas y el tiempo de escucha no son voz generada. No incluye cargos de Twilio ni Gemini.
+### Gasto mensual de la API de Gemini
+
+La portada y Opciones → Teléfono muestran el coste neto exportado por Google Cloud Billing
+para el mes de factura y el proyecto de la API (incluye otras claves de ese proyecto).
+Sin conexión se ofrece un enlace a Google AI Studio, no un importe inventado.
+
+Para mostrar importes en el VPS, activa la exportación de costes estándar o detallados
+de Cloud Billing a BigQuery. Configura en el entorno del contenedor o su `.env.local`:
+
+- `GEMINI_BILLING_TABLE`: ruta `proyecto_exportacion.dataset.tabla` de la exportación.
+- `GEMINI_BILLING_PROJECT`: ID del proyecto donde se usa Gemini.
+- `GEMINI_BILLING_SERVICE_ID`: valor de `service.id` de Gemini en la exportación.
+- `GEMINI_BILLING_LOCATION`: región del dataset, por ejemplo `EU`.
+- Autenticación ADC de Google: identidad con BigQuery Job User en el proyecto de exportación
+  y BigQuery Data Viewer en el dataset; en Docker puede montarse un archivo privado de credenciales
+  y apuntar `GOOGLE_APPLICATION_CREDENTIALS` a su ruta dentro del contenedor.
+
+El panel suma costes y créditos exportados en la moneda original. La exportación puede llegar
+con retraso o no cubrir fechas anteriores a su activación. La consulta se reutiliza una hora
+y limita BigQuery a 1 GiB facturable por consulta. No incluye Twilio ni ElevenLabs.

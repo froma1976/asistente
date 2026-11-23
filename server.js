@@ -28,6 +28,7 @@ const localEnv = path.join(dataDir,'.env.local');
 if(fs.existsSync(localEnv)) process.loadEnvFile(localEnv);
 const vozTelefono=require('./voz-telefono');
 const eleven=vozTelefono.servicioVoz();
+const gastoGemini=require('./gasto-gemini').crearConsulta();
 fs.mkdirSync(dataDir,{recursive:true});
 const avisos = require('./avisos').crearAvisos(dataDir);
 const configPath = path.join(dataDir, 'config.json');
@@ -2418,6 +2419,11 @@ const server = http.createServer(async (req, res) => {
   if(pathname==='/api/cuota-voz' && req.method==='GET'){
     res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');
     try{return res.end(JSON.stringify(eleven?await eleven.cuota():{configurada:false}));}
+    catch{res.statusCode=503;return res.end('{}');}
+  }
+  if(pathname==='/api/gasto-gemini' && req.method==='GET'){
+    res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');
+    try{return res.end(JSON.stringify(await gastoGemini()));}
     catch{res.statusCode=503;return res.end('{}');}
   }
   if (pathname === '/api/avisos') {
