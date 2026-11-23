@@ -5,4 +5,5 @@ config.json.tmp
 secretary_data.json.tmp
 avisos-privados.json*
 .env
+.env.local
 sesiones.json*

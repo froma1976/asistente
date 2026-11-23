@@ -24,6 +24,10 @@ if (fs.existsSync(envPath)) {
 
 // Runtime settings (editable from UI and persisted to config.json)
 const dataDir = process.env.CLARA_DATA_DIR || __dirname;
+const localEnv = path.join(dataDir,'.env.local');
+if(fs.existsSync(localEnv)) process.loadEnvFile(localEnv);
+const vozTelefono=require('./voz-telefono');
+const eleven=vozTelefono.servicioVoz();
 fs.mkdirSync(dataDir,{recursive:true});
 const avisos = require('./avisos').crearAvisos(dataDir);
 const configPath = path.join(dataDir, 'config.json');
@@ -1237,6 +1241,9 @@ Mejoras de llamadas reales anteriores, solo cuando encajen en esta gestión: ${c
 }
 
 function createGeminiLiveSession({
+  vozFernando,
+  onTurnEnd,
+  onSessionStop,
   phoneCall,
   greeted,
   onReject,
@@ -1356,6 +1363,11 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
         tools: phoneCall ? [{functionDeclarations:[...privateTools,...ofertas.searchTool[0].functionDeclarations,agenda.tool,...(registerTable?[mesa.tool]:[]),...GEMINI_TOOLS[0].functionDeclarations.filter(f=>!phoneCall.simulated||f.name!=='schedule_appointment')]}] : [{functionDeclarations:[...GEMINI_TOOLS[0].functionDeclarations,agenda.tool,criterio.herramientaComercial,...ofertas.searchTool[0].functionDeclarations]}],
       },
     };
+    if (vozFernando) {
+      const part=setupMessage.setup.systemInstruction.parts[0];
+      part.text=part.text.replaceAll(SALUDO_ENTRANTE,vozTelefono.SALUDO);
+      part.text+='\nIdentidad para esta llamada: habla en primera persona como la voz IA autorizada de Fernando, nunca como Clara o su secretaria. Preséntate como Fernando; solo si piden apellidos, Rodríguez Magdalena. Si preguntan si eres una IA, dilo con claridad. Esta identidad sustituye los ejemplos de presentación anteriores; conserva las reglas de permisos y herramientas.';
+    }
     geminiWs.send(JSON.stringify(setupMessage));
   };
 
@@ -1387,7 +1399,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
         onReady?.();
         const greetingHint = greeted ? null : phoneCall?.goal
           ? 'Han descolgado. Escucha si habla una persona o una centralita. Ante una persona, saluda y explica el encargo; ante una locución, espera a la pregunta y responde con la opción adecuada.'
-          : `Saluda con tono cercano: «${SALUDO_ENTRANTE}». Deja espacio para que te cuenten.`;
+          : `Saluda con tono cercano: «${vozFernando?vozTelefono.SALUDO:SALUDO_ENTRANTE}». Deja espacio para que te cuenten.`;
         if (greetingHint) geminiWs.send(
           JSON.stringify({
             clientContent: {
@@ -1431,7 +1443,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
 
         if (content.interrupted) {
           onInterrupted?.();
-        }
+        } else if(content.turnComplete || content.generationComplete) onTurnEnd?.();
       }
 
       // Handle asynchronous NON_BLOCKING tool calls
@@ -1708,6 +1720,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
       );
     },
     close() {
+      onSessionStop?.();
       closedByUs = true;
       try {
         geminiWs?.close();
@@ -1967,6 +1980,7 @@ function claraVoice() {
 }
 let saludoCache = null;
 async function prepararSaludo() {
+  if(eleven) return null;
   const voice = claraVoice();
   if (saludoCache?.voice === voice) return saludoCache;
   const tts = await synthesizeSpeechPcm24k(SALUDO_ENTRANTE, voice);
@@ -2351,6 +2365,11 @@ const server = http.createServer(async (req, res) => {
   }
   if (twilioWebhook || pathname.startsWith('/api/phone')) {
     return phone.handle(pathname, req, res, readJsonBody);
+  }
+  if(pathname==='/api/cuota-voz' && req.method==='GET'){
+    res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');
+    try{return res.end(JSON.stringify(eleven?await eleven.cuota():{configurada:false}));}
+    catch{res.statusCode=503;return res.end('{}');}
   }
   if (pathname === '/api/avisos') {
     try {
@@ -3195,7 +3214,7 @@ server.on('upgrade', (req, socket) => {
             avisos.llamada(call.id,appConfig.publicWebhookUrl).catch(()=>console.warn('Avisos de llamada no disponibles.'));
           }
           call.downsample = {};
-          const saludo = !phoneCall.goal && saludoCache?.voice === claraVoice() ? saludoCache : null;
+          const saludo = !eleven && !phoneCall.goal && saludoCache?.voice === claraVoice() ? saludoCache : null;
           if (saludo && call.twilioStreamSid && ws.readyState === 1) {
             ws.send(JSON.stringify({ event: 'media', streamSid: call.twilioStreamSid, media: { payload: pcm24kToMulaw8k(saludo.pcm24k, call.downsample).toString('base64') } }));
             appendTranscriptChunk('assistant', SALUDO_ENTRANTE);
@@ -3210,7 +3229,22 @@ server.on('upgrade', (req, socket) => {
             }\n<i>Responde a este mensaje para susurrarle una orden en vivo o envía /desviar para pasarla a tu móvil.</i>`
           );
 
+          function enviarPcm(pcm){
+            if(activeCall!==call||call.status!=='screening'||ws.readyState!==1||!call.twilioStreamSid)return;
+            broadcastToDashboard({type:'call_audio',role:'assistant',data:pcm.toString('base64')});
+            ws.send(JSON.stringify({event:'media',streamSid:call.twilioStreamSid,media:{
+              payload:pcm24kToMulaw8k(pcm,call.downsample).toString('base64')
+            }}));
+          }
+          let locutor=eleven && vozTelefono.locutor(eleven.sintetizar,enviarPcm,()=>{
+            locutor?.cortar();locutor=null;
+            appendTranscriptChunk('system','ElevenLabs no disponible. Se usará la voz de respaldo a partir de la siguiente respuesta.');
+          });
+          let turnoCerrado=false;
           call.geminiSession = createGeminiLiveSession({
+            vozFernando:!!eleven,
+            onTurnEnd(){turnoCerrado=true;locutor?.terminar();},
+            onSessionStop(){locutor?.cortar();},
             phoneCall, greeted: Boolean(saludo), callerMemory: call.callerMemory,
             onKey:phoneCall.goal?(key)=>{
               if(activeCall!==call||call.status!=='screening'||ws.readyState!==1||!call.twilioStreamSid||
@@ -3231,29 +3265,22 @@ server.on('upgrade', (req, socket) => {
             },
             onCheck:result => {(call.checks ||= []).push(result);},
             onAudioChunk(base64Pcm24k) {
-              broadcastToDashboard({
-                type: 'call_audio',
-                role: 'assistant',
-                data: base64Pcm24k,
-              });
-              if (!call.twilioStreamSid || ws.readyState !== 1) return;
-              const pcm24kBuf = Buffer.from(base64Pcm24k, 'base64');
-              const mulaw8kBuf = pcm24kToMulaw8k(pcm24kBuf, call.downsample);
-              ws.send(
-                JSON.stringify({
-                  event: 'media',
-                  streamSid: call.twilioStreamSid,
-                  media: { payload: mulaw8kBuf.toString('base64') },
-                })
-              );
+              if(!locutor) enviarPcm(Buffer.from(base64Pcm24k,'base64'));
             },
             onTranscript(role, text) {
+              if(activeCall!==call||call.status!=='screening')return;
+              if(role==='assistant'){turnoCerrado=false;locutor?.texto(text);}
+              else if(locutor && turnoCerrado){
+                turnoCerrado=false;locutor.cortar();
+                if(ws.readyState===1)ws.send(JSON.stringify({event:'clear',streamSid:call.twilioStreamSid}));
+              }
               appendTranscriptChunk(role, text);
             },
             onClassification(data) {
               updateCallClassification(data);
             },
             onInterrupted() {
+              locutor?.cortar();
               if (call.twilioStreamSid && ws.readyState === 1) {
                 ws.send(JSON.stringify({ event: 'clear', streamSid: call.twilioStreamSid }));
               }

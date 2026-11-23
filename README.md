@@ -58,3 +58,19 @@ Puedes configurar todo desde el botón **"⚙️ Configurar Mi Móvil y Reglas"*
 Antes de actualizar el VPS, verifica que el móvil de desvío está en la configuración privada o en `PERSONAL_PHONE_NUMBER`. Si dependías de contactos, facturas o reglas incorporados en el código antiguo, guárdalos primero desde el panel en el volumen privado. Las instalaciones nuevas empiezan sin esos datos; las existentes siguen leyendo `config.json` y `secretary_data.json` de `CLARA_DATA_DIR`.
 
 El webhook firmado de estado `/twilio/status/...` debe llegar al mismo servidor HTTPS que `/twilio/voice`. Sirve para liberar la línea si Twilio finaliza una llamada saliente aunque se haya perdido la respuesta inicial. Ante un resultado incierto no se repite la marcación automáticamente.
+### Voz de Fernando en Twilio
+
+Las llamadas entrantes y salientes mantienen su webhook, Gemini y sus herramientas.
+Con `ELEVENLABS_API_KEY` en el entorno del servidor, se vocalizan las respuestas con
+la voz «nando» en ElevenLabs. `ELEVENLABS_VOICE_ID` permite seleccionar otra voz.
+Sin clave, se mantiene el audio de Gemini.
+
+En local se carga `.env.local`; en el contenedor también puede montarse como
+`$CLARA_DATA_DIR/.env.local`, legible por el usuario `node`. En el despliegue
+de Clara corresponde a `/opt/clara/privado/datos/.env.local` en el host
+(propietario `1000:1000`, permisos `600`). No subir este archivo a GitHub.
+Reiniciar el servicio después de instalar o retirar la credencial.
+
+La portada consulta los créditos de la suscripción cada minuto mientras está visible.
+Los minutos son una estimación de voz sintetizada con Flash a 500 créditos/minuto;
+las pausas y el tiempo de escucha no son voz generada. No incluye cargos de Twilio ni Gemini.
