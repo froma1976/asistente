@@ -1,6 +1,17 @@
 'use strict';
 
 const sectores=['energía','telecomunicaciones','seguros','alarmas','servicios financieros','otros'];
+// Una señal de escucha no es una nueva confirmación de las condiciones.
+function respuestaAmbigua(respuesta,pregunta=''){
+  const normal=s=>s.toLowerCase().normalize('NFD').replace(/\p{M}/gu,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+  const r=normal(respuesta);
+  if(!r || /^(?:(?:si|vale|aja|ya|claro|correcto|exacto|de acuerdo|asi es|te oigo|le oigo|te escucho|le escucho|entiendo|perfecto|bien|mhm|mm+|continua|sigue|adelante|ok)(?: |$))+$/u.test(r)){
+    if(!/^(?:si|correcto|exacto|asi es)$/.test(r))return true;
+    const ultima=pregunta.trim().match(/¿([^¿?]+)\?\s*$/u);
+    return !ultima || pregunta.indexOf('?')!==pregunta.lastIndexOf('?') || !/^(?:es (?:esa |esta )?(?:tu |su |la )?(?:oferta (?:final|definitiva)|ultima oferta|mejor oferta)|es definitiva)$/.test(normal(ultima[1]));
+  }
+  return false;
+}
 function sinMargen(respuesta,pregunta='') {
   if(/^\s*[¡¿]*(?:sí|si|correcto|exacto|así es)[.!¡,\s]*$/iu.test(respuesta) &&
      /(?:es (?:esa |esta )?(?:tu |su |la )?(?:oferta (?:final|definitiva)|última oferta|mejor oferta)|no (?:hay|queda) más margen)[^?¿]{0,15}\?\s*$/iu.test(pregunta)) return true;
@@ -88,4 +99,4 @@ async function compararCompanias(key,propuestas,encargo){
     contents:[{parts:[{text:JSON.stringify({encargo,propuestas})}]}]});
   return r.text.slice(0,900);
 }
-module.exports={sectores,searchTool,lookup,summarize,aprender,siguientePaso,sinMargen,paraTitular,compararCompanias};
+module.exports={sectores,searchTool,lookup,summarize,aprender,siguientePaso,sinMargen,paraTitular,compararCompanias,respuestaAmbigua};

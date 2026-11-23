@@ -118,3 +118,10 @@ require('node:test')('el desvío exige oferta comercial final favorable sin señ
   for(const cambio of [{comercial:false},{veredicto:'Faltan datos'},{veredicto:'No interesa'},{condicionesFinales:false},{sinIndicios:undefined},{sinIndicios:'false'}])
     assert.equal(paraTitular({...ok,...cambio}),false);
 });
+require('node:test')('una respuesta breve solo puede confirmar la pregunta concreta, no autorizar el desvío por sí sola',()=>{
+  const {respuestaAmbigua}=require('../ofertas'),assert=require('node:assert/strict');
+  for(const [r,p] of [['Sí.','¿Me oyes?'],['Vale','¿Es tu oferta definitiva?'],['Sí, te escucho','¿Es tu oferta definitiva?'],['Sí','¿Es tu oferta definitiva? ¿Me oyes?'],['Correcto','¿Incluye impuestos?'],['Ajá','']])
+    assert.equal(respuestaAmbigua(r,p),true);
+  assert.equal(respuestaAmbigua('Sí.','Entendido. ¿Es tu oferta definitiva?'),false);
+  assert.equal(respuestaAmbigua('Sí, te oigo, pero la cuota cambia a los tres meses.'),false);
+});
