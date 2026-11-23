@@ -1912,6 +1912,7 @@ function endActiveCall(reason = 'Llamada finalizada') {
     activeCall.twilioWs = null;
   }
   const snapshot = serializeCall(activeCall);
+  snapshot.seguimientoId=activeCall.followId;
   snapshot.checks=activeCall.checks||[];
   secretaryData.history.unshift(snapshot);
   if (secretaryData.history.length > 30) secretaryData.history.pop();
@@ -2320,6 +2321,15 @@ async function reviewOffer(record) {
   if(!appConfig.geminiApiKey || !record.transcript?.length) return;
   try { record.offerReview=await ofertas.summarize(appConfig.geminiApiKey,record,invoiceBriefs()); }
   catch { record.offerReview={veredicto:'Valoración no disponible',resumen:'No se ha podido analizar la transcripción.'}; }
+  const n=secretaryData.seguimientos.find(x=>x.negociacion && x.id===record.seguimientoId);
+  if(n){
+    n.resultado=record.offerReview?.resumen||'Sin oferta comparable.';n.estado='resuelto';n.cerrado=Date.now();
+    const lote=secretaryData.seguimientos.filter(x=>x.negociacion===n.negociacion);
+    if(lote.length>1 && lote.every(x=>x.estado==='resuelto')){
+      const recomendacion=await ofertas.compararCompanias(appConfig.geminiApiKey,lote.map(x=>[x.asunto,x.resultado]),n.paso).catch(()=>null);
+      if(recomendacion)n.resultado+=` · Comparativa: ${recomendacion}`;
+    }
+  }
   saveSecretaryData();
 }
 function invoiceBriefs() {
@@ -2342,7 +2352,7 @@ setInterval(async()=>{
   const now=Date.now();
   for(const n of secretaryData.seguimientos){
     if(n.estado==='marcando'&&now-n.intento>180000&&activeCall?.followId!==n.id){
-      n.estado=n.intentos>=2?'revisar':'pendiente';n.vence=now+3600000;saveSecretaryData();
+      n.estado=n.negociacion||n.intentos>=2?'revisar':'pendiente';n.vence=now+3600000;saveSecretaryData();
     }else if(n.estado==='esperando'&&n.vence&&now-n.vence>86400000){n.estado='revisar';saveSecretaryData();}
   }
   const hour=madridHour(now);
@@ -2376,6 +2386,27 @@ const server = http.createServer(async (req, res) => {
   }
   if (twilioWebhook || pathname.startsWith('/api/phone')) {
     return phone.handle(pathname, req, res, readJsonBody);
+  }
+  if(pathname==='/api/negociaciones' && req.method==='POST'){
+    const reply=(s,d)=>{res.writeHead(s,{'Content-Type':'application/json'});res.end(JSON.stringify(d));};
+    const d=await readJsonBody(req).catch(()=>null);
+    const inv=Number.isInteger(d?.indice)&&invoiceBriefs()[d.indice];
+    if(!inv || typeof d.destinos!=='string'||d.destinos.length>650||typeof d.prioridad!=='string'||d.prioridad.length>300)
+      return reply(400,{error:'Selecciona un contrato e indica las compañías.'});
+    const filas=d.destinos.trim().split(/\r?\n/).map(x=>/^([^,\n]{1,70}),\s*(\+[\d ()-]+)$/.exec(x.trim()));
+    if(filas.length>5||filas.some(x=>!x||!x[1].trim()||!/^\+[1-9]\d{6,14}$/.test(normalizeSpanishE164(x[2]))))
+      return reply(400,{error:'Indica hasta cinco líneas con el formato Compañía, +34…'});
+    const now=Date.now(), lote=crypto.randomUUID(), vistos=new Set(), notas=[];
+    for(const [,nombre,tel] of filas){
+      const numero=normalizeSpanishE164(tel), asunto=`Negociar ${inv.category} con ${nombre.trim()}`;
+      if(vistos.has(numero)||secretaryData.seguimientos.some(x=>x.negociacion&&x.numero===numero&&x.asunto===asunto&&['pendiente','marcando','revisar'].includes(x.estado)&&!x.resultado))
+        return reply(409,{error:'Hay un número repetido o una negociación pendiente con esa compañía.'});
+      vistos.add(numero);
+      notas.push({id:crypto.randomUUID(),negociacion:lote,numero,asunto,cuando:'Próximo turno de llamadas',vence:now,estado:'pendiente',responsable:'Clara',
+        paso:`Solicita y negocia una propuesta comparable, sin contratar ni iniciar una portabilidad. Base privada, no la leas al comercial: ${JSON.stringify(inv).slice(0,900)}. Prioridad: ${datosParaVoz(d.prioridad)||'mejorar el coste total manteniendo prestaciones'}. Aclara coste total del primer año y posterior, extras, compromisos y condiciones perdidas o ganadas. Pide propuesta por escrito y resume el resultado para Fernando.`});
+    }
+    secretaryData.seguimientos.push(...notas);saveSecretaryData();
+    return reply(201,{message:`${notas.length} llamada(s) programada(s). Consulta los resultados en Transcripciones → Seguimientos.`});
   }
   if(pathname==='/api/cuota-voz' && req.method==='GET'){
     res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');

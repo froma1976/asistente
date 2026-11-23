@@ -62,6 +62,11 @@ async function refresh() {
     el('connection').textContent = state.missing.length ? 'Para usar el teléfono falta: '+state.missing.join(', ')+'.' : 'Telefonía configurada. Fernando atiende las llamadas que lleguen a tu número de Twilio.';
     el('call').textContent = state.call ? state.call.number+'\n'+state.call.transcript.map(t => t.text).join('\n') : '';
     const signature = JSON.stringify(state.invoices);
+    if(signature!==lastInvoices){
+      el('contrato').replaceChildren(...state.invoices.map((i,index)=>new Option(`${i.provider} · ${i.category} · ${i.price}`,String(index))));
+      el('comparar').querySelector('button').disabled=!state.invoices.length;
+      if(!state.invoices.length)el('comparacionEstado').textContent='Añade primero una factura en Ajustes.';
+    }
     if (signature !== lastInvoices) el('invoices').replaceChildren(...state.invoices.map(i => {
       const item = document.createElement('details'), summary = document.createElement('summary'), terms = document.createElement('pre');
       summary.textContent = `${i.provider} · ${i.price}`;
@@ -105,6 +110,16 @@ el('profile').onsubmit = async e => {
   e.preventDefault();
   try { await api('/context',{context:el('context').value}); el('saved').textContent = ' Guardado para futuras llamadas.'; }
   catch (err) { el('saved').textContent = err.message; }
+};
+el('comparar').onsubmit=async e=>{
+  e.preventDefault();
+  const boton=e.currentTarget.querySelector('button');boton.disabled=true;
+  try{
+    const r=await fetch('/api/negociaciones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      indice:Number(el('contrato').value),destinos:el('companias').value,prioridad:el('prioridad').value
+    })});
+    const d=await readReply(r);el('comparacionEstado').textContent=d.message;el('companias').value='';
+  }catch(err){el('comparacionEstado').textContent=err.message;}finally{boton.disabled=false;}
 };
 refresh();
 setInterval(refresh,5000);

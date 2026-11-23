@@ -13,7 +13,13 @@
 <section id="calls" hidden><h2>Teléfono</h2><p id="connection">Comprobando el teléfono…</p><p id="cuota-voz" role="status">Consultando saldo de voz…</p><pre id="call"></pre>
 <hr><h3>Nueva llamada</h3><form id="dial"><label for="goal">¿Qué quieres que gestione?</label><textarea name="goal" id="goal" rows="2" required maxlength="2000" placeholder="Pide un presupuesto de seguro de hogar. Averigua el precio anual, las exclusiones y la franquicia."></textarea>
 <label for="number">Número de destino, con prefijo</label><input id="number" name="number" type="tel" required placeholder="+34 600 000 000">
-<button class="primary">Llamar ahora</button><p id="dialStatus" role="status"></p></form></section>
+<button class="primary">Llamar ahora</button><p id="dialStatus" role="status"></p></form>
+<hr><h3>Negociar mejores condiciones</h3><p>Elige un contrato y añade hasta cinco compañías, incluida la tuya si quieres. Se llamará por turnos en tu horario de seguimientos, aunque cierres el panel.</p>
+<form id="comparar"><label for="contrato">Servicio contratado</label><select id="contrato" required></select>
+<label for="companias">Una compañía y su teléfono oficial por línea</label><textarea id="companias" required rows="3" maxlength="650" placeholder="Nombre de la compañía, +34…"></textarea>
+<label for="prioridad">¿Qué quieres mejorar o conservar?</label><input id="prioridad" maxlength="300" placeholder="Por ejemplo, conservar las dos líneas y quitar la permanencia">
+<button class="primary">Programar negociación</button><p id="comparacionEstado" role="status"></p></form>
+<a href="/transcripciones.html">Ver resultados y seguimientos</a></section>
 <section id="memory" hidden><h2>Mi contexto</h2><p>Fernando usa esta información para atender y hacer llamadas.</p><form id="profile"><label for="context">¿Qué debería saber de ti?</label>
 <textarea id="context" rows="3" maxlength="6000" placeholder="Mis horarios, mis preferencias y cuándo quiero que me consultes."></textarea>
 <button class="primary">Guardar cambios</button><span role="status" id="saved"></span></form><hr><h3>Próximas citas (Google Calendar)</h3><p id="calendarStatus">Comprobando Google Calendar…</p><div id="calendarEvents"></div><hr><h3>Facturas y contratos</h3><p>Abre un proveedor para ver los detalles.</p><div id="invoices"></div></section>
