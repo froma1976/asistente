@@ -2378,6 +2378,30 @@ const server = http.createServer(async (req, res) => {
     if (activeCall && activeCall.status !== 'ended') live.unshift(serializeCall(activeCall));
     return res.end(JSON.stringify({live, history:secretaryData.history,balance:balance(Date.now()),horario:[appConfig.seguirDesde??10,appConfig.seguirHasta??20],seguimientos:secretaryData.seguimientos.filter(n=>n.estado)}));
   }
+  if (pathname === '/api/transcripciones' && req.method === 'DELETE') {
+    const reply = (status, data) => {
+      res.writeHead(status, {'Content-Type':'application/json','Cache-Control':'no-store'});
+      res.end(JSON.stringify(data));
+    };
+    const body = await readJsonBody(req).catch(() => null);
+    if (!req.headers['content-type']?.startsWith('application/json') ||
+        typeof body?.id !== 'string' || !body.id || body.id.length > 200)
+      return reply(400, {error:'La llamada no es válida.'});
+    if (rehearsalCalls.has(body.id) || (activeCall?.id === body.id && activeCall.status !== 'ended'))
+      return reply(409, {error:'No se puede borrar una llamada en curso.'});
+    if (!secretaryData.history.some(call => call.id === body.id))
+      return reply(404, {error:'Esta llamada ya no está en el historial.'});
+    const next = {...secretaryData, history:secretaryData.history.filter(call => call.id !== body.id)};
+    try {
+      guardarPrivado(secretaryDataPath, next);
+    } catch {
+      return reply(503, {error:'No se pudo guardar el borrado. Inténtalo de nuevo.'});
+    }
+    secretaryData = next;
+    if (activeCall?.id === body.id) activeCall = null;
+    broadcastToDashboard({type:'call_deleted', id:body.id, secretaryData});
+    return reply(200, {ok:true});
+  }
 
   if (pathname === '/api/clara/restaurant-test' && req.method === 'POST') {
     const reply = (code, data) => {

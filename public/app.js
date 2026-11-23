@@ -254,6 +254,15 @@ function connectDashboardWebSocket() {
         secretaryData = msg.secretaryData;
         renderSecretaryHub();
       }
+    } else if (msg.type === 'call_deleted') {
+      secretaryData = msg.secretaryData;
+      renderSecretaryHub();
+      if (activeCall?.id === msg.id && activeCall.status === 'ended') {
+        activeCall = null;
+        transcriptContainer.replaceChildren();
+        renderClassification({});
+        fromNumberVal.textContent = 'Desconocido';
+      }
     } else if (msg.type === 'call_audio' && msg.data) {
       playPcm24kBase64(msg.data);
     } else if (msg.type === 'speak_fallback' && msg.text) {

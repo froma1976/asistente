@@ -4,7 +4,7 @@
   "description": "Asistente personal de filtrado de llamadas comerciales en tiempo real con Gemini 3.8 Live, transcripcion en vivo y desvio en caliente al movil",
   "main": "server.js",
   "scripts": {
-    "test": "node --test test/llamadas.test.js test/avisos.test.js",
+    "test": "node --test test/llamadas.test.js test/avisos.test.js test/transcripciones.test.js",
     "start": "node server.js",
     "start:agy": "agy-node server.js"
   },
