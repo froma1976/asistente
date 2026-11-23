@@ -3065,8 +3065,14 @@ server.on('upgrade', (req, socket) => {
         const m = JSON.parse(raw);
         if (m.type === 'start' && !live) {
           if (!['in','out'].includes(m.mode) || (m.mode === 'out' && (typeof m.goal !== 'string' || !m.goal.trim() || m.goal.length > 2000))) return fail('Indica el motivo de la llamada.');
-          const rehearsalGreeting = m.mode === 'in' && saludoCache?.voice === claraVoice() ? saludoCache : null;
+          const rehearsalGreeting = !eleven && m.mode === 'in' && saludoCache?.voice === claraVoice() ? saludoCache : null;
+          const voz = eleven && vozTelefono.locutor(eleven.sintetizar,
+            pcm=>{if(ready && ws.readyState===1) send('audio',pcm.toString('base64'));},
+            ()=>{if(ready && ws.readyState===1) fail('ElevenLabs no ha podido generar la voz de Fernando. Comprueba la clave y el saldo.');});
           live = createGeminiLiveSession({
+            vozFernando:Boolean(voz),
+            onTurnEnd:()=>voz?.terminar(),
+            onSessionStop:()=>voz?.cortar(),
             phoneCall:{simulated:true,goal:m.mode === 'out' ? m.goal : ''},
             greeted: Boolean(rehearsalGreeting),
             onReady:() => {
@@ -3084,13 +3090,14 @@ server.on('upgrade', (req, socket) => {
             },
             onTranscript:(role,text) => {
               if (!ready || !text) return;
+              if(role==='assistant') voz?.texto(text);
               const last = record.transcript.at(-1);
               if (last?.role === role && Date.now()-last.updatedAt < 4500) {
                 last.text += text; last.updatedAt=Date.now();
               } else record.transcript.push({role,text,updatedAt:Date.now(),timestamp:new Date().toLocaleTimeString('es-ES')});
               send('transcript',record.transcript);
             },
-            onAudioChunk:data => send('audio', data),
+            onAudioChunk:data => {if(!voz) send('audio', data);},
             onCheck:result => {if(record) (record.checks ||= []).push(result);},
             onTable:result => {
               send('table',result);
@@ -3100,7 +3107,7 @@ server.on('upgrade', (req, socket) => {
                 if(record.status==='ended') saveSecretaryData();
               }
             },
-            onInterrupted:() => send('interrupted'),
+            onInterrupted:() => {voz?.cortar();send('interrupted');},
             onError:() => fail('No se pudo conectar con Gemini Live. Revisa la configuración de voz.'),
             onClose:() => fail('Se ha cerrado la sesión de voz con Gemini Live.'),
           });
