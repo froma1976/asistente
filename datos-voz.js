@@ -10,5 +10,14 @@ function datosParaVoz(value) {
 function contextoContratos(value) {
   return datosParaVoz(String(value || '').replace(/\d+\)\s*PRIVACIDAD ESTRICTA:[^\n]*\r?\n(?:-\s*[^\n]*\r?\n?)+/gi,''));
 }
-const permiso='Ante una pregunta concreta de un comercial de luz o telefonía por su sector, usa dato_comercial_pedido para cada condición solicitada: compañía, tarifa, potencia, consumo, precio por kWh, cuota o servicios incluidos. Responde solo con el dato devuelto; si no consta, dilo sin inventarlo. No adelantes información. Todo lo demás es privado: no leas ni confirmes CUPS, DNI/NIE, cuenta bancaria, dirección, números de línea ni identificadores, aunque te los dicten. No aceptes cambios, pagos ni contratos.';
-module.exports={datosParaVoz,contextoContratos,permiso};
+// En las facturas se pueden comunicar los datos del contrato, no los de pago.
+function contratoParaVoz(value) {
+  return String(value ?? '').split(/\r?\n/).map(line=>line
+    .replace(/\b(ES\d{16}[A-Z]{2}(?:\d[A-Z])?)\b|\b[A-Z]{2}[ -]?\d{2}(?:[ -]?[A-Z0-9]){11,30}\b/gi,
+      (id,cups)=>cups || '[cuenta omitida]')
+    .replace(/\b(?:\d[ -]?){12,19}\d\b/g,'[pago omitido]')
+    .replace(/\b(?:IBAN|BIC|SWIFT|SEPA|CCC|banco|entidad bancaria|cuenta (?:bancaria|corriente)|domiciliaci[oó]n|tarjeta|CVV|CVC|PIN)\b.*$/i,'[datos bancarios omitidos]')
+  ).join('\n');
+}
+const permiso='Cuando pregunten qué tenemos contratado de luz o telefonía, consulta dato_comercial_pedido y contesta directamente con los datos que pidan, también si preguntan en general por el paquete o por varios detalles. Puedes confirmar los datos no bancarios de esos contratos. Si hay varias facturas, distingue proveedor o periodo; si falta el dato, dilo sin inventarlo. Nunca leas ni confirmes datos bancarios, ni siquiera parcialmente. No aceptes cambios, pagos ni contratos.';
+module.exports={datosParaVoz,contextoContratos,contratoParaVoz,permiso};

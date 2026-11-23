@@ -1,5 +1,13 @@
-const {datosParaVoz}=require('./datos-voz');
+const {datosParaVoz,contratoParaVoz}=require('./datos-voz');
 
+function contratosDelSector(sector,invoices) {
+  if(!Object.hasOwn(sectores,sector)) return [];
+  return invoices.filter(inv=>sectores[sector].test(inv.category+' '+(inv.subtitle||''))).map(inv=>({
+    compania:contratoParaVoz(inv.provider),producto:contratoParaVoz(inv.category),
+    detalle:contratoParaVoz(inv.subtitle),importe:contratoParaVoz(inv.monthlyTotal),
+    condiciones:(inv.keyRates||[]).map(contratoParaVoz)
+  }));
+}
 function dia(value) {
   let s=String(value||'').trim();
   const es=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
@@ -45,7 +53,7 @@ const preguntas={
   cuota:/precio|pag[ao]|pag[aá]is|cuota|cuesta|coste|mensual|importe/i,
   paquete:/tien[eé]|contratad|incluy|paquete|servicios|l[ií]neas|velocidad|incluid/i,
 };
-const herramientaComercial={name:'dato_comercial_pedido',description:'Consulta solo la condición del contrato que acaba de preguntar el comercial de ese sector.',parameters:{type:'OBJECT',properties:{sector:{type:'STRING',enum:Object.keys(sectores)},campo:{type:'STRING',enum:Object.keys(preguntas)}},required:['sector','campo']}};
+const herramientaComercial={name:'dato_comercial_pedido',description:'Recupera las facturas de luz o telefonía para contestar lo que preguntan sobre los contratos actuales.',parameters:{type:'OBJECT',properties:{sector:{type:'STRING',enum:Object.keys(sectores)}},required:['sector']}};
 function etiqueta(value) {
   // Solo nombres breves, no identificadores, teléfonos, direcciones ni notas libres.
   const s=String(value||'').trim();
@@ -97,4 +105,4 @@ function seguimientosDelNumero(notes,number) {
   const numero=numeroSeguimiento(number);
   return numero?notes.filter(n=>n.numero===numero).slice(0,3).map(({fecha,asunto,paso,cuando})=>({fecha,asunto,paso,cuando})):[];
 }
-module.exports={disponibilidad,pistas,datoComercial,herramientaComercial,experiencia,lecciones,notaSeguimiento,seguimientosDelNumero};
+module.exports={disponibilidad,pistas,contratosDelSector,datoComercial,herramientaComercial,experiencia,lecciones,notaSeguimiento,seguimientosDelNumero};

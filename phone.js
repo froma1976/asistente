@@ -1,8 +1,10 @@
 const crypto = require('node:crypto');
 
-function createPhone(getConfig, save, currentCall, invoices) {
+function createPhone(getConfig, save, currentCall, invoices, sessionFile) {
   const password = process.env.CLARA_PASSWORD || crypto.randomBytes(18).toString('base64url');
   const tickets = new Map();
+  const {crearAcceso,mismoOrigen}=require('./acceso');
+  const acceso=crearAcceso(password,sessionFile);
   let dialing = false;
   function equal(a, b) {
     const x = Buffer.from(a), y = Buffer.from(b);
@@ -24,10 +26,11 @@ function createPhone(getConfig, save, currentCall, invoices) {
   const draining = () => process.env.CLARA_DATA_DIR && require('node:fs').existsSync(require('node:path').join(process.env.CLARA_DATA_DIR,'.deploying'));
   return {
     password: process.env.CLARA_PASSWORD ? '(la de CLARA_PASSWORD)' : password,
+    login:acceso.handle,
     authorized(req) {
       const auth = req.headers.authorization || '';
-      return equal(auth, 'Basic ' + Buffer.from(`clara:${password}`).toString('base64')) &&
-        (!req.headers.origin || (() => { try { return new URL(req.headers.origin).host === req.headers.host; } catch { return false; } })());
+      return (!req.headers.origin || mismoOrigen(req)) &&
+        (equal(auth, 'Basic ' + Buffer.from(`clara:${password}`).toString('base64')) || acceso.valid(req));
     },
     redeem(path) {
       const key = path.split('/').pop(), details = tickets.get(key);

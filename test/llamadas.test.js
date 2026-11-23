@@ -45,6 +45,37 @@ test('no avisa si falla el disco; no confunde el guardado con la entrega', async
   }
 });
 const {datoComercial}=require('../criterio-llamada');
+require('node:test')('sesión recordada: persiste, caduca y se revoca al salir',async t=>{
+  const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+  const {crearAcceso}=require('../acceso'),dir=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'clara-acceso-'));
+  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+  const file=path.join(dir,'sesiones.json'), key='prueba', acceso=crearAcceso(key,file);
+  const req=Object.assign(require('node:stream').Readable.from(['username=clara&password=prueba&recordar=on']),{
+    method:'POST',headers:{host:'panel.test',origin:'https://panel.test'},socket:{}});
+  const res={writeHead(status,headers){this.status=status;this.headers=headers;},end(){}};
+  await acceso.handle('/entrar',req,res);
+  assert.equal(res.status,303);
+  const cookie=res.headers['Set-Cookie'];assert.match(cookie,/Max-Age=2592000/);assert.match(cookie,/HttpOnly/);assert.match(cookie,/Secure/);
+  req.headers.cookie=cookie.split(';')[0];
+  const restarted=crearAcceso(key,file);
+  assert.ok(restarted.valid(req));assert.ok(!crearAcceso('otra',file).valid(req));
+  const stored=JSON.parse(fs.readFileSync(file));assert.ok(!JSON.stringify(stored).includes(req.headers.cookie.slice(14)));
+  fs.writeFileSync(file,JSON.stringify({[Object.keys(stored)[0]]:Date.now()-1}));assert.ok(!crearAcceso(key,file).valid(req));
+  await restarted.handle('/salir',req,res);assert.ok(!crearAcceso(key,file).valid(req));
+});
+require('node:test')('la consulta de voz devuelve las líneas y condiciones de varias facturas sin datos de pago',()=>{
+  const assert=require('node:assert/strict'), {contratosDelSector}=require('../criterio-llamada');
+  const facturas=[
+    {category:'Fibra',keyRates:['Línea 600000000, 80 GB','IBAN: ES12 3456 7890 1234 5678 9012']},
+    {category:'Móvil',monthlyTotal:'12 €/mes'},
+    {category:'Luz',keyRates:['CUPS: ES1234567890123456AB']}
+  ];
+  const red=contratosDelSector('telefonia',facturas);
+  assert.equal(red.length,2);
+  assert.deepEqual(red[0].condiciones,['Línea 600000000, 80 GB','[datos bancarios omitidos]']);
+  assert.equal(red[1].importe,'12 €/mes');
+  assert.equal(contratosDelSector('luz',facturas)[0].condiciones[0],facturas[2].keyRates[0]);
+});
 require('node:test')('solo devuelve la condición solicitada del sector y omite identificadores de los paquetes',()=>{
   const assert=require('node:assert/strict');
   const invoices=[
