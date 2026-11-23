@@ -44,6 +44,19 @@ function pistas(text,{tasks,profile,memory}) {
     .flatMap(s=>String(s||'').split(/[\n;]+/)).filter(s=>matches.some(re=>re.test(s)));
   return [...new Set(lines.map(s=>datosParaVoz(s).trim().slice(0,180)))].slice(0,3);
 }
+function devolucion(historial,numero,motivo,ahora=Date.now()){
+  const tel=s=>String(s||'').replace(/[\s()-]/g,'').replace(/^0034/,'+34').replace(/^([6789]\d{8})$/,'+34$1');
+  const recientes=historial.filter(c=>c.source==='twilio' && c.encargoSaliente &&
+    Date.parse(c.startedAt)<=ahora && ahora-Date.parse(c.startedAt)<14*86400000);
+  const mismo=recientes.filter(c=>/^\+\d{7,15}$/.test(tel(numero))&&tel(c.fromNumber)===tel(numero));
+  const temasDichos=Object.values(temas).filter(re=>re.test(motivo));
+  const candidatos=(mismo.length?mismo:recientes).filter(c=>temasDichos.some(re=>re.test(c.encargoSaliente+' '+(c.classification?.summary||''))));
+  if(!mismo.length)return candidatos.length?{nota:'Posible devolución desde otro teléfono. Pregunta de qué empresa y gestión se trata; no adelantes datos del expediente.'}:null;
+  const c=candidatos.length===1?candidatos[0]:!temasDichos.length&&mismo.length===1?mismo[0]:null;
+  if(!c)return null;
+  return {fecha:c.startedAt,encargo:datosParaVoz(c.encargoSaliente).slice(0,450),
+    resumen:c.clasificadaEnDirecto?datosParaVoz(c.classification?.summary).slice(0,450):'Sin resultado confirmado'};
+}
 const sectores={luz:/\b(luz|electricidad|el[eé]ctrica|energ[ií]a|kwh|kilovatios?)\b/i,telefonia:/\b(fibra|telefon[ií]a|tel[eé]fono|m[oó]vil(?:es)?|internet|telecomunicaciones)\b/i};
 const preguntas={
   compania:/compañ[ií]a|operador|proveedor|comercializadora|con qui[eé]n|empresa/i,
@@ -105,4 +118,4 @@ function seguimientosDelNumero(notes,number) {
   const numero=numeroSeguimiento(number);
   return numero?notes.filter(n=>n.numero===numero).slice(0,3).map(({fecha,asunto,paso,cuando})=>({fecha,asunto,paso,cuando})):[];
 }
-module.exports={disponibilidad,pistas,contratosDelSector,datoComercial,herramientaComercial,experiencia,lecciones,notaSeguimiento,seguimientosDelNumero};
+module.exports={disponibilidad,pistas,devolucion,contratosDelSector,datoComercial,herramientaComercial,experiencia,lecciones,notaSeguimiento,seguimientosDelNumero};

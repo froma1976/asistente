@@ -125,3 +125,12 @@ require('node:test')('una respuesta breve solo puede confirmar la pregunta concr
   assert.equal(respuestaAmbigua('Sí.','Entendido. ¿Es tu oferta definitiva?'),false);
   assert.equal(respuestaAmbigua('Sí, te oigo, pero la cuota cambia a los tres meses.'),false);
 });
+require('node:test')('una devolución recupera el encargo real sin exponerlo a otro número',()=>{
+  const {devolucion}=require('../criterio-llamada'),assert=require('node:assert/strict');
+  const c={source:'twilio',startedAt:'2026-11-23T08:00:00Z',fromNumber:'+34600000000',encargoSaliente:'Taller: pedir presupuesto',clasificadaEnDirecto:true,classification:{summary:'Pendiente de diagnóstico'}};
+  const buscar=(cs,t)=>devolucion(cs,t,'Soy del taller',Date.parse('2026-11-23T15:00:00Z'));
+  assert.equal(buscar([c],'600000000').resumen,'Pendiente de diagnóstico');
+  assert.equal(buscar([c],'+34600000001').encargo,undefined);
+  assert.equal(buscar([c,c],'600000000'),null);
+  assert.equal(buscar([{...c,source:'rehearsal'}],'600000000'),null);
+});
