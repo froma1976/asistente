@@ -3,7 +3,7 @@ const mode = get('mode'), statusLine = get('status');
 let current;
 mode.onchange = () => {
   get('brief').hidden = mode.value !== 'out';
-  get('start').textContent = mode.value === 'out' ? 'Recibir llamada de Clara' : 'Llamar a Clara';
+  get('start').textContent = mode.value === 'out' ? 'Recibir llamada de Fernando' : 'Llamar a Fernando';
   get('tableResult').textContent=mode.value==='out'?'Si confirmas una mesa como recepción, se anotará como simulación en Calendar y recibirás un Telegram.':'';
 };
 function silence(s) {
@@ -36,9 +36,9 @@ async function connect(s) {
     const stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
     if (current !== s) { stream.getTracks().forEach(t => t.stop()); return; }
     s.stream = stream;
-    statusLine.textContent = 'Conectando con Clara…';
+    statusLine.textContent = 'Conectando con Fernando…';
     const ws = s.ws = new WebSocket(`${location.protocol === 'https:'?'wss':'ws'}://${location.host}/ws/ensayo`);
-    s.timeout = setTimeout(()=>{if(current===s) finish('Clara no ha respondido. Comprueba la configuración de Gemini Live.');},25000);
+    s.timeout = setTimeout(()=>{if(current===s) finish('Fernando no ha respondido. Comprueba la configuración de Gemini Live.');},25000);
     ws.onopen = () => { if(current===s) ws.send(JSON.stringify({type:'start',mode:mode.value,goal:get('goal').value.trim()})); };
     ws.onmessage = e => {
       if (current !== s) return;
@@ -60,7 +60,7 @@ async function connect(s) {
       } else if (m.type === 'transcript') {
         get('words').replaceChildren(...m.data.map(turn => {
           const p=document.createElement('p');
-          p.textContent=(turn.role==='assistant'?'Clara: ':turn.role==='system'?'Resultado: ':'Tú: ')+turn.text;
+          p.textContent=(turn.role==='assistant'?'Fernando: ':turn.role==='system'?'Resultado: ':'Tú: ')+turn.text;
           return p;
         }));
       } else if (m.type === 'audio') {
@@ -73,13 +73,13 @@ async function connect(s) {
       } else if (m.type === 'interrupted') silence(s);
       else if (m.type === 'error') finish(m.data);
     };
-    ws.onerror = ws.onclose = () => { if(current===s) finish('La conexión de voz se ha cerrado. Comprueba que Clara está en marcha.'); };
-  } catch(e) { if(current===s) finish(e.name==='NotAllowedError'?'Permite el micrófono para hablar con Clara.':e.message); }
+    ws.onerror = ws.onclose = () => { if(current===s) finish('La conexión de voz se ha cerrado. Comprueba que Fernando está en marcha.'); };
+  } catch(e) { if(current===s) finish(e.name==='NotAllowedError'?'Permite el micrófono para hablar con Fernando.':e.message); }
 }
 get('roles').onsubmit = async e => {
   e.preventDefault();
   if(current) return;
-  if(mode.value==='out' && !get('goal').value.trim()) { statusLine.textContent='Escribe el encargo para Clara.'; return; }
+  if(mode.value==='out' && !get('goal').value.trim()) { statusLine.textContent='Escribe el encargo para Fernando.'; return; }
   const s=current={sounds:new Set(),next:0};
   get('words').replaceChildren();
   get('tableResult').textContent='';
@@ -88,7 +88,7 @@ get('roles').onsubmit = async e => {
     s.ctx=new AudioContext({sampleRate:16000}); await s.ctx.resume();
     if(current!==s) return;
     if(mode.value==='out') {
-      statusLine.textContent='Clara te está llamando…'; get('accept').hidden=false;
+      statusLine.textContent='Fernando te está llamando…'; get('accept').hidden=false;
       ring(s); s.ring=setInterval(()=>ring(s),2000);
     } else await connect(s);
   } catch { if(current===s) finish('El navegador no ha podido iniciar el audio.'); }

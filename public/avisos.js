@@ -15,7 +15,7 @@ if (!window.isSecureContext || !navigator.serviceWorker || !window.PushManager |
       let sub = await reg.pushManager.getSubscription();
       if (!sub && !pedir) return;
       const r = await fetch('/api/avisos');
-      if (!r.ok) throw Error('No se pudo conectar con Clara.');
+      if (!r.ok) throw Error('No se pudo conectar con Fernando.');
       const {clave} = await r.json();
       const key = Uint8Array.from(atob(clave.replace(/-/g,'+').replace(/_/g,'/')), c=>c.charCodeAt(0));
       if (sub && new Uint8Array(sub.options.applicationServerKey).toString() !== key.toString()) {
@@ -24,9 +24,9 @@ if (!window.isSecureContext || !navigator.serviceWorker || !window.PushManager |
       }
       sub ||= await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
       const result = await fetch('/api/avisos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sub)});
-      if (!result.ok) throw Error('Clara no ha podido guardar este dispositivo.');
+      if (!result.ok) throw Error('Fernando no ha podido guardar este dispositivo.');
       activarAvisos.textContent = 'Avisos de llamadas activados';
-      estadoAvisos.textContent = 'Toca el aviso de Clara para leer esa llamada.';
+      estadoAvisos.textContent = 'Toca el aviso de Fernando para leer esa llamada.';
     } catch(e) {
       estadoAvisos.textContent = Notification.permission==='denied' ? 'Permite las notificaciones de este sitio en los ajustes del navegador.' :
         `No se han activado los avisos. ${e.message}`;

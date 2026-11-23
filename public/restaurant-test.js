@@ -30,7 +30,7 @@
     task.disabled = start.hidden = true;
     end.hidden = form.hidden = false;
     Array.from(form.elements).forEach(el => el.disabled = false);
-    status.textContent = 'Has descolgado. Saluda a Clara como si fueras recepción.';
+    status.textContent = 'Has descolgado. Saluda a Fernando como si fueras recepción.';
     text.focus();
   };
   end.onclick = () => { window.speechSynthesis?.cancel(); finish('Has colgado. Prueba terminada.'); };
@@ -56,7 +56,7 @@
     controller = pending;
     const next = turns.concat({role:'user',text:words});
     Array.from(form.elements).forEach(el => el.disabled = true);
-    status.textContent = 'Clara está respondiendo…';
+    status.textContent = 'Fernando está respondiendo…';
     try {
       const res = await fetch('/api/clara/restaurant-test', {method:'POST', signal:pending.signal,
         headers:{'Content-Type':'application/json'}, body:JSON.stringify({task:task.value, turns:next})});
@@ -66,7 +66,7 @@
       turns = next.concat({role:'model',text:answer.frase});
       text.value = '';
       line('Recepción (tú)', words);
-      line('Clara', answer.frase);
+      line('Fernando', answer.frase);
       if (window.speechSynthesis) {
         const speech = new SpeechSynthesisUtterance(answer.frase);
         speech.lang = 'es-ES';

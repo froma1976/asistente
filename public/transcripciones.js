@@ -54,7 +54,7 @@ function card(call, opened, saved=false) {
   }
   for(const line of call.transcript || []) {
     const p=document.createElement('p');
-    p.textContent=`${line.timestamp || ''} ${line.role==='assistant'?'Clara':line.role==='caller'?'Interlocutor':'Sistema'}: ${line.text}`;
+    p.textContent=`${line.timestamp || ''} ${line.role==='assistant'?'Fernando':line.role==='caller'?'Interlocutor':'Sistema'}: ${line.text}`;
     box.append(p);
   }
   if (!call.transcript?.length) box.append('Sin texto transcrito.');
@@ -99,7 +99,7 @@ async function refresh() {
     if(data.horario&&!horario.dataset.loaded){[horario.elements.desde.value,horario.elements.hasta.value]=data.horario;horario.dataset.loaded='1';}
     if(counts)document.getElementById('balance').textContent=`Hoy: ${counts.resueltos} resueltos · ${counts.pendientes} pendientes · ${counts.revisar} necesitan tu decisión.`;
     document.getElementById('seguimientos').replaceChildren(...(data.seguimientos||[]).map(n=>{
-      const li=document.createElement('li');li.textContent=`${n.asunto} · ${n.estado} · ${n.responsable} · ${n.cuando} · ${n.resultado||n.paso}`;return li;
+      const li=document.createElement('li');li.textContent=`${n.asunto} · ${n.estado} · ${n.responsable==='Clara'?'Fernando':n.responsable} · ${n.cuando} · ${n.resultado||n.paso}`;return li;
     }));
     if(next && next!==available && !pending)feedback.textContent='';
     available=next;take.hidden=!next;take.disabled=pending||requested===next;
@@ -115,7 +115,7 @@ async function refresh() {
       prevHistory=b;
     }
     notice.textContent=llamada&&!data.live.length&&!data.history.length?'Esta llamada no está disponible en el historial.':'';
-  } catch {available='';take.hidden=true;notice.textContent='Sin conexión con Clara. Reintentando…';}
+  } catch {available='';take.hidden=true;notice.textContent='Sin conexión con Fernando. Reintentando…';}
   finally {setTimeout(refresh,1500);}
 }
 refresh();

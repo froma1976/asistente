@@ -994,7 +994,7 @@ function buildSystemInstruction(callerMemory = null) {
     ? `\nMEMORIA PRIVADA DEL NÚMERO QUE LLAMA:\n${callerMemory.summaryText}\nNo uses estos antecedentes para identificar a quien llama ni los menciones en el saludo.\n`
     : '';
 
-  return `Eres Clara y atiendes las llamadas de ${appConfig.ownerName} en España (hoy es ${todayStr}).
+  return `Eres Fernando y atiendes las llamadas de ${appConfig.ownerName} en España (hoy es ${todayStr}).
 Tu misión NO es solo filtrar spam: eres la SECRETARIA PERSONAL COMPLETA de ${appConfig.ownerName}. Atiendes todas sus llamadas entrantes con máxima eficacia: coges recados, anotas citas en su calendario/agenda, compruebas disponibilidad en el calendario y gestionas solicitudes de reservas (tarifa actual: ${appConfig.nightlyRate || '120 €/noche'}), le pasas llamadas importantes a su móvil (${appConfig.personalPhoneNumber}) y, cuando llaman comercializadoras de luz o telefonía, comparas en directo con los datos reales de las facturas de ${appConfig.ownerName}.
 ${memoryBlock}
 IDIOMA Y ACENTO OBLIGATORIO (ESPAÑOL DE ESPAÑA):
@@ -1332,7 +1332,7 @@ function createGeminiLiveSession({
           },
         },
         systemInstruction: {
-          parts: [{ text: (phoneCall ? `Eres Clara. Habla en español natural. Hoy es ${new Date().toLocaleDateString('es-ES',{dateStyle:'full'})}.
+          parts: [{ text: (phoneCall ? `Eres Fernando. Habla en español natural. Hoy es ${new Date().toLocaleDateString('es-ES',{dateStyle:'full'})}.
 ${greeted?'Ya has saludado al descolgar. Escucha y responde.':phoneCall.goal?'Tú llamas: escucha quién descuelga y sigue el encargo.':`Abre con «${SALUDO_ENTRANTE}» y escucha.`} Si el motivo no queda claro, pregunta por lo que falte. El nombre de una empresa, el número llamante y conocer parte de una factura no acreditan identidad.
 ${permiso} Nunca autorices cambios, pagos o contratos. Nunca des códigos ni datos bancarios.
 Ante ofertas, escucha las condiciones y pregunta por lo que falte. Usa consultar_tarifa_publica para contrastar tarifas, no para verificar al interlocutor. No inventes precios ni datos. Deja hablar, desarrolla tus respuestas cuando ayude y mantén un ritmo cálido también en llamadas largas. No te despidas por una pausa ni por haber contestado una pregunta. Si parece que han terminado, pregunta si quieren añadir algo y espera su respuesta.
@@ -1348,7 +1348,7 @@ Separa recado guardado, aviso enviado y cita anotada. No prometas ninguna acció
 Agenda personal: antes de ofrecer o confirmar una hora consulta consultar_agenda con fecha exacta y hora de Madrid. Si está ocupada pide otra hora y compruébala. Si no puedes verificarla, no la ofrezcas como libre. No reveles motivos de ocupación. Confirma que una cita quedó anotada solo tras el éxito de schedule_appointment.
 ${mesa.margen}
 ${registerTable?'Cuando recepción confirme explícitamente la mesa, registra la fecha y hora exactas acordadas con registrar_mesa_confirmada antes de despedirte. Una hora alternativa autorizada y confirmada también se registra. No registres una mera oferta o una negativa. El evento y el aviso son de prueba.':''}
-Saluda sin anunciar tu nombre ni tu cargo. Si preguntan quién eres, responde «Soy Clara». Solo si piden el apellido o el nombre completo, responde «Clara Navarro». No te presentes como «asistente» ni «secretaria». Le llevas a Fernando los temas personales. Usa tú o usted según te hablen.
+Habla en primera persona. Si preguntan quién eres, responde «Soy Fernando». Solo si piden el apellido o el nombre completo, responde «Fernando Rodríguez Magdalena». Si preguntan si eres una IA, explica que eres la voz de IA de Fernando. Usa tú o usted según te hablen.
 Ejemplos de tono (orientativos, no los recites):
 - «¿Está ${appConfig.ownerName}?» → «Ahora mismo no puede ponerse. ¿Quieres que le deje algún recado?»
 - «Era por lo del coche.» → «Vale, por el coche. ¿Le digo que te llame?»
@@ -1905,7 +1905,7 @@ function endActiveCall(reason = 'Llamada finalizada') {
   secretaryData.history.unshift(snapshot);
   if (secretaryData.history.length > 30) secretaryData.history.pop();
   saveSecretaryData();
-  if(snapshot.source==='twilio') sendTelegramNotification('Clara: transcripción lista');
+  if(snapshot.source==='twilio') sendTelegramNotification('Fernando: transcripción lista');
   if(snapshot.source==='twilio') reviewOffer(snapshot);
   if(snapshot.source==='twilio'&&appConfig.geminiApiKey) ofertas.aprender(appConfig.geminiApiKey,snapshot).then(key=>{
     if(Object.hasOwn(criterio.lecciones,key)){snapshot.leccion=key;saveSecretaryData();}
@@ -1974,7 +1974,7 @@ async function synthesizeSpeechPcm24k(text, voiceName = 'Aoede') {
 }
 
 // Saludo instantáneo: se sintetiza una vez y suena en cuanto se descuelga, mientras arranca la sesión de voz.
-const SALUDO_ENTRANTE = 'Hola, Fernando ahora no puede ponerse. Dime, ¿qué necesitabas?';
+const SALUDO_ENTRANTE = 'Hola, soy Fernando. Dime, ¿qué necesitabas?';
 function claraVoice() {
   return appConfig.voiceName === 'Aoede' || !appConfig.voiceName ? 'Sulafat' : appConfig.voiceName;
 }
@@ -1992,7 +1992,7 @@ async function prepararSaludo() {
   pcm = pcm.subarray(start - (start % 2));
   if (pcm.length < 19200 || pcm.length > 720000) return null; // PCM mono a 24 kHz: hasta 15 s para la presentación completa
   saludoCache = { voice, pcm24k: pcm };
-  console.log('🔊 Saludo instantáneo de Clara preparado.');
+  console.log('🔊 Saludo instantáneo de Fernando preparado.');
   return saludoCache;
 }
 
@@ -2346,7 +2346,7 @@ setInterval(async()=>{
   }
   if(hour>=20&&appConfig.ultimoBalance!==madridDay(now)&&secretaryData.seguimientos.length){
     const b=balance(now);
-    const r=await sendTelegramNotification(`Resumen de Clara: ${b.resueltos} resueltos hoy · ${b.pendientes} pendientes · ${b.revisar} necesitan tu decisión.`);
+    const r=await sendTelegramNotification(`Resumen de Fernando: ${b.resueltos} resueltos hoy · ${b.pendientes} pendientes · ${b.revisar} necesitan tu decisión.`);
     if(r.ok){appConfig.ultimoBalance=madridDay(now);saveConfig();}
   }
 },60000).unref();
@@ -2440,7 +2440,7 @@ const server = http.createServer(async (req, res) => {
       const result = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
         method:'POST', headers:{'Content-Type':'application/json','x-goog-api-key':appConfig.geminiApiKey},
         signal:AbortSignal.timeout(45000), body:JSON.stringify({
-          systemInstruction:{parts:[{text:`Simulación de una llamada saliente. Eres Clara, la asistente que llama al restaurante por este encargo: ${JSON.stringify(task)}. El usuario interpreta exclusivamente a recepción. ${mesa.margen} En esta prueba de texto no tienes acceso a la agenda; no afirmes haberla consultado. Mantén en_curso mientras buscas otro hueco autorizado. Solo declara confirmada si recepción confirma explícitamente la mesa a la hora acordada. Devuelve frase (solo lo que dices en voz alta) y estado (en_curso, confirmada o sin_confirmar).`}]},
+          systemInstruction:{parts:[{text:`Simulación de una llamada saliente. Eres Fernando, el asistente que llama al restaurante por este encargo: ${JSON.stringify(task)}. El usuario interpreta exclusivamente a recepción. ${mesa.margen} En esta prueba de texto no tienes acceso a la agenda; no afirmes haberla consultado. Mantén en_curso mientras buscas otro hueco autorizado. Solo declara confirmada si recepción confirma explícitamente la mesa a la hora acordada. Devuelve frase (solo lo que dices en voz alta) y estado (en_curso, confirmada o sin_confirmar).`}]},
           contents:turns.map(t=>({role:t.role,parts:[{text:t.text}]})),
           generationConfig:{responseMimeType:'application/json',responseSchema:{type:'OBJECT',properties:{
             frase:{type:'STRING'},estado:{type:'STRING',enum:['en_curso','confirmada','sin_confirmar']}
@@ -2452,7 +2452,7 @@ const server = http.createServer(async (req, res) => {
       const turn = JSON.parse(data.candidates[0].content.parts.filter(p=>!p.thought).map(p=>p.text).join(''));
       if (typeof turn.frase !== 'string' || !turn.frase.trim() || !['en_curso','confirmada','sin_confirmar'].includes(turn.estado)) throw new Error();
       return reply(200, turn);
-    } catch { return reply(502,{error:'Clara no ha podido responder. Comprueba Gemini y vuelve a intentarlo.'}); }
+    } catch { return reply(502,{error:'Fernando no ha podido responder. Comprueba Gemini y vuelve a intentarlo.'}); }
   }
 
   if (pathname === '/api/clara/chat' && req.method === 'POST') {
@@ -2463,8 +2463,8 @@ const server = http.createServer(async (req, res) => {
     let text;
     try { text = (await readJsonBody(req)).text.trim(); } catch {}
     if (!text || text.length > 2000) return send(400, { error: 'Escribe un mensaje de hasta 2000 caracteres.' });
-    if (!appConfig.geminiApiKey) return send(503, { error: 'Configura la clave de Gemini en Ajustes para hablar con Clara.' });
-    if (claraReplyPending) return send(409, { error: 'Clara está respondiendo. Inténtalo de nuevo en un momento.' });
+    if (!appConfig.geminiApiKey) return send(503, { error: 'Configura la clave de Gemini en Ajustes para hablar con Fernando.' });
+    if (claraReplyPending) return send(409, { error: 'Fernando está respondiendo. Inténtalo de nuevo en un momento.' });
     claraReplyPending = true;
     try {
       const turn = { role: 'user', text }; const cal = await agenda.upcoming(getGoogleAccessToken, appConfig.googleCalendarId || 'primary', 8).catch(() => ({ events: [] }));
@@ -2473,7 +2473,7 @@ const server = http.createServer(async (req, res) => {
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': appConfig.geminiApiKey },
         signal: AbortSignal.timeout(45000),
         body: JSON.stringify({
-          systemInstruction: { parts: [{ text: `Eres Clara, la asistente personal del usuario. Hoy es ${new Date().toLocaleDateString('es-ES', {dateStyle:'full'})}. Conversa en español natural. Preferencias del titular: ${JSON.stringify(appConfig.lifeContext || '')}. Próximas citas en Google Calendar: ${JSON.stringify(cal.events)}. Facturas registradas: ${JSON.stringify(invoiceBriefs())}. No inventes datos ausentes. Para un encargo, pregunta solo lo que falte. Conserva en nuevoEncargo la hora preferida y, por separado, los límites de la alternativa con «solo si no hay a esa hora». Si te dan únicamente una franja, conserva sus límites sin pedir una hora exacta. Cuando quede completo, incluye su resumen en nuevoEncargo y explica que el titular puede usar Preparar una llamada y revisar el número antes de marcar. En otros turnos usa una cadena vacía. El chat no marca ni confirma reservas.` }] },
+          systemInstruction: { parts: [{ text: `Eres Fernando, el asistente personal del usuario. Hoy es ${new Date().toLocaleDateString('es-ES', {dateStyle:'full'})}. Conversa en español natural. Preferencias del titular: ${JSON.stringify(appConfig.lifeContext || '')}. Próximas citas en Google Calendar: ${JSON.stringify(cal.events)}. Facturas registradas: ${JSON.stringify(invoiceBriefs())}. No inventes datos ausentes. Para un encargo, pregunta solo lo que falte. Conserva en nuevoEncargo la hora preferida y, por separado, los límites de la alternativa con «solo si no hay a esa hora». Si te dan únicamente una franja, conserva sus límites sin pedir una hora exacta. Cuando quede completo, incluye su resumen en nuevoEncargo y explica que el titular puede usar Preparar una llamada y revisar el número antes de marcar. En otros turnos usa una cadena vacía. El chat no marca ni confirma reservas.` }] },
           contents: [...secretaryData.claraChat.slice(-24), turn].map(m => ({ role: m.role, parts: [{ text: m.text }] })),
           generationConfig: { responseMimeType: 'application/json', responseSchema: {
             type: 'OBJECT', properties: { respuesta: { type: 'STRING' }, nuevoEncargo: { type: 'STRING' } }, required: ['respuesta','nuevoEncargo'],
@@ -2489,7 +2489,7 @@ const server = http.createServer(async (req, res) => {
       broadcastSecretaryUpdate();
       return send(200, { ok: true, secretaryData, newTask: answer.nuevoEncargo.trim() });
     } catch {
-      return send(502, { error: 'Clara no ha podido responder. Comprueba la conexión y la configuración de Gemini y vuelve a enviar el mensaje.' });
+      return send(502, { error: 'Fernando no ha podido responder. Comprueba la conexión y la configuración de Gemini y vuelve a enviar el mensaje.' });
     } finally { claraReplyPending = false; }
   }
 
@@ -3073,7 +3073,7 @@ server.on('upgrade', (req, socket) => {
               if (ws.readyState !== 1) return;
               ready = true;
               record = {id:crypto.randomUUID(), startedAt:new Date().toISOString(), source:'rehearsal',
-                fromNumber:m.mode === 'out' ? 'Simulación · Clara te llama' : 'Simulación · Tú llamas', transcript:[], status:'screening'};
+                fromNumber:m.mode === 'out' ? 'Simulación · Fernando te llama' : 'Simulación · Tú llamas', transcript:[], status:'screening'};
               rehearsalCalls.set(record.id, record);
               send('ready');
               if (rehearsalGreeting) {
@@ -3222,7 +3222,7 @@ server.on('upgrade', (req, socket) => {
           prepararSaludo().catch(() => {});
 
           sendTelegramNotification(
-            `📞 <b>${phoneCall.goal?'Llamada saliente de Clara':'Llamada entrante atendida por Clara'}</b>\n📱 ${call.fromNumber}\n${
+            `📞 <b>${phoneCall.goal?'Llamada saliente de Fernando':'Llamada entrante atendida por Fernando'}</b>\n📱 ${call.fromNumber}\n${
               call.callerMemory
                 ? `🧠 <b>Reconocido:</b> ${call.callerMemory.callerName}`
                 : '🕵️‍♀️ Identificando quién llama...'

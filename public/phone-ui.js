@@ -1,10 +1,10 @@
 const el = id => document.getElementById(id);
 async function readReply(response) {
   if (response.status === 401) throw new Error('Vuelve a abrir el panel e inicia sesión.');
-  if (response.status === 404) throw new Error('El servidor no tiene esta función. Reinicia Clara y recarga el panel.');
-  if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Clara no está disponible. Recarga el panel y vuelve a intentarlo.');
+  if (response.status === 404) throw new Error('El servidor no tiene esta función. Reinicia Fernando y recarga el panel.');
+  if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Fernando no está disponible. Recarga el panel y vuelve a intentarlo.');
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Clara no ha podido responder.');
+  if (!response.ok) throw new Error(data.error || 'Fernando no ha podido responder.');
   return data;
 }
 async function api(path, data) {
@@ -28,7 +28,7 @@ el('prepare').onclick = () => {
 function renderChat(turns) {
   el('conversation').replaceChildren(...turns.map(t => {
     const p = document.createElement('p');
-    p.textContent = (t.role === 'user' ? 'Tú: ' : 'Clara: ') + t.text;
+    p.textContent = (t.role === 'user' ? 'Tú: ' : 'Fernando: ') + t.text;
     if (t.role === 'user') p.className='mine';
     return p;
   }));
@@ -39,7 +39,7 @@ el('send').onsubmit = async e => {
   e.preventDefault();
   const box = el('message'), button = e.currentTarget.querySelector('button');
   if (!box.value.trim() || button.disabled) return;
-  button.disabled = box.disabled = true; el('answerStatus').textContent='Clara está escribiendo…';
+  button.disabled = box.disabled = true; el('answerStatus').textContent='Fernando está escribiendo…';
   try {
     await chatReady;
     const r = await fetch('/api/clara/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:box.value.trim()})});
@@ -59,7 +59,7 @@ async function refresh() {
       el('context').value = state.context;
       initialized = true;
     }
-    el('connection').textContent = state.missing.length ? 'Para usar el teléfono falta: '+state.missing.join(', ')+'.' : 'Telefonía configurada. Clara atiende las llamadas que lleguen a tu número de Twilio.';
+    el('connection').textContent = state.missing.length ? 'Para usar el teléfono falta: '+state.missing.join(', ')+'.' : 'Telefonía configurada. Fernando atiende las llamadas que lleguen a tu número de Twilio.';
     el('call').textContent = state.call ? state.call.number+'\n'+state.call.transcript.map(t => t.text).join('\n') : '';
     const signature = JSON.stringify(state.invoices);
     if (signature !== lastInvoices) el('invoices').replaceChildren(...state.invoices.map(i => {

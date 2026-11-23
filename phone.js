@@ -82,7 +82,7 @@ function createPhone(getConfig, save, currentCall, invoices, sessionFile) {
         return send(400,{error:'Indica el teléfono con prefijo internacional y el motivo.'});
       if (missing.length) return send(503,{error:'Falta: '+missing.join(', ')+'.'});
       if (busy()) return send(409,{error:'Ya hay una llamada en curso.'});
-      if (draining()) return send(503,{error:'Clara se está actualizando. Vuelve a intentarlo en unos segundos.'});
+      if (draining()) return send(503,{error:'Fernando se está actualizando. Vuelve a intentarlo en unos segundos.'});
       dialing = true;
       const s = stream({number:data.number, goal:data.goal.trim(),followId});
       try {

@@ -408,13 +408,13 @@ function buildWhatsAppUrl(phone, text) {
 
 function renderSecretaryHub() {
   const thread = document.getElementById('claraThread');
-  const turns = secretaryData.claraChat?.length ? secretaryData.claraChat : [{role:'model', text:'Soy Clara. ¿Qué necesitas?'}];
+  const turns = secretaryData.claraChat?.length ? secretaryData.claraChat : [{role:'model', text:'Soy Fernando. ¿Qué necesitas?'}];
   if (thread.dataset.snapshot !== JSON.stringify(turns)) {
     thread.dataset.snapshot = JSON.stringify(turns);
     thread.replaceChildren(...turns.map(turn => {
       const bubble = document.createElement('p');
       bubble.className = turn.role === 'user' ? 'from-owner' : 'from-clara';
-      bubble.textContent = `${turn.role === 'user' ? 'Tú' : 'Clara'}: ${turn.text}`;
+      bubble.textContent = `${turn.role === 'user' ? 'Tú' : 'Fernando'}: ${turn.text}`;
       return bubble;
     }));
     thread.scrollTop = thread.scrollHeight;
@@ -1256,7 +1256,7 @@ connectDashboardWebSocket();
     if (submit.disabled || !text.value.trim()) return;
     submit.disabled = mic.disabled = text.disabled = true;
     try {
-      feedback.textContent = 'Clara está escribiendo…';
+      feedback.textContent = 'Fernando está escribiendo…';
       const response = await fetch('/api/clara/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: text.value.trim() }),

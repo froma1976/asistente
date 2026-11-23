@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Clara · Teléfono</title><link rel="stylesheet" href="/inicio.css"></head>
-<body><header><nav aria-label="Clara"><a href="/simulacion.html">Simulación</a> · <a href="/transcripciones.html">Transcripciones</a> · <a href="/gestion.html">Opciones</a></nav></header>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fernando · Teléfono</title><link rel="stylesheet" href="/inicio.css"></head>
+<body><header><nav aria-label="Fernando"><a href="/simulacion.html">Simulación</a> · <a href="/transcripciones.html">Transcripciones</a> · <a href="/gestion.html">Opciones</a></nav></header>
 <form action="/salir" method="post"><button>Cerrar sesión</button></form>
-<main><h1>Clara</h1><p id="state">Tu panel de llamadas</p>
+<main><h1>Fernando</h1><p id="state">Tu panel de llamadas</p>
 <p id="cuota-voz" role="status">Consultando saldo de voz…</p>
 <button id="open"><svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h4l2 5-3 2a16 16 0 0 0 6 6l2-3 5 2v4a2 2 0 0 1-2 2C10 21 3 14 3 5a2 2 0 0 1 2-2Z"/></svg>Pedir una llamada</button>
 <section style="text-align:center;padding:1rem"><button id="avisar">Activar avisos de llamadas</button><p id="aviso-estado" role="status"></p></section>
@@ -11,4 +11,4 @@
 <label for="tel">¿A qué número llamo?</label><input id="tel" type="tel" placeholder="+34…" required>
 <label for="goal">¿Qué quieres que diga?</label><textarea id="goal" rows="3" maxlength="2000" required placeholder="Reserva mesa para cuatro el sábado a las 14:00. Si no hay, entre las 13:30 y las 15:00."></textarea>
 <button id="mic" type="button" hidden>Dictar encargo</button><p id="notice" role="status"></p><button id="dial">Llamar</button></form></dialog>
-<script src="/inicio.js"></script><script src="/avisos.js"></script></body></html>
+<script src="/inicio.js"></script><script src="/cuota-voz.js"></script><script src="/avisos.js"></script></body></html>

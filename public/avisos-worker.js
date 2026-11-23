@@ -1,7 +1,7 @@
 self.addEventListener('push', event => {
   const id = event.data?.json()?.id;
   if (!/^call_\d+$/.test(id)) return;
-  event.waitUntil(self.registration.showNotification('Clara está atendiendo la llamada', {
+  event.waitUntil(self.registration.showNotification('Fernando está atendiendo la llamada', {
     body:'Toca para ver la transcripción en directo.', tag:id, data:{id}, icon:'/clara.svg'
   }));
 });
