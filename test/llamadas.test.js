@@ -110,3 +110,11 @@ require('node:test')('una rebaja no acaba el regateo; una negativa parcial tampo
   assert.equal(sinMargen('Sí.','¿Es su oferta definitiva?'),true);
   assert.equal(sinMargen('Sí.','¿Puedes mejorarla?'),false);
 });
+require('node:test')('el desvío exige oferta comercial final favorable sin señales de fraude',()=>{
+  const {paraTitular}=require('../ofertas');
+  const assert=require('node:assert/strict');
+  const ok={comercial:true,veredicto:'Interesa',condicionesFinales:true,sinIndicios:true};
+  assert.equal(paraTitular(ok),true);
+  for(const cambio of [{comercial:false},{veredicto:'Faltan datos'},{veredicto:'No interesa'},{condicionesFinales:false},{sinIndicios:undefined},{sinIndicios:'false'}])
+    assert.equal(paraTitular({...ok,...cambio}),false);
+});

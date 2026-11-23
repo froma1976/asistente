@@ -1247,6 +1247,7 @@ function createGeminiLiveSession({
   phoneCall,
   greeted,
   onReject,
+  onFavorable,
   onKey,
   onCheck,
   onTable,
@@ -1299,11 +1300,13 @@ function createGeminiLiveSession({
   ];
   let turnoComercial=0, comparacionInicial=null, ultimoTurnoComparado=-1;
   const dialogoOferta=[];
+  let contextoRecortado=false;
   function anotarOferta(role,text){
     const last=dialogoOferta.at(-1);
+    if(text.length+(last?.role===role?last.text.length:0)>2000) contextoRecortado=true;
     if(last?.role===role) last.text=(last.text+text).slice(-2000);
     else dialogoOferta.push({role,text:text.slice(-2000)});
-    if(dialogoOferta.length>30) dialogoOferta.shift();
+    if(dialogoOferta.length>30){contextoRecortado=true;dialogoOferta.shift();}
   }
 
   const handleOpen = () => {
@@ -1494,13 +1497,17 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
             offerVerdict='Faltan datos';
             const invoices=sector instanceof RegExp?invoiceBriefs().filter(x=>sector.test(x.category)):[];
             const checks=contrastes.filter(x=>x.sector===fc.args?.sector);
-            let argumento='';
+            let argumento='',desvio;
+            const turnoValorado=turnoComercial;
             if((invoices.length||checks.length) && heard.trim()) {
               const review=await ofertas.summarize(apiKey,{transcript:dialogoOferta,checks},invoices,true).catch(()=>null);
               if(['Interesa','No interesa'].includes(review?.veredicto)) offerVerdict=review.veredicto;
+              if(onFavorable && !contextoRecortado && !phoneCall.goal && turnoValorado===turnoComercial && ofertas.paraTitular(review))
+                desvio=await onFavorable(review.resumen);
               if(typeof review?.argumento==='string' && !ofertaFinal) argumento=review.argumento.slice(0,450);
             }
             result={veredicto:offerVerdict,argumento,siguientePaso:ofertas.siguientePaso(offerVerdict,fc.args?.sector,ultimaRespuesta,ofertaFinal)};
+            if(desvio)result.siguientePaso=desvio;
           }
           else if(fc.name==='check_availability') {
             result={estado:criterio.disponibilidad(fc.args||{},secretaryData.blockedDates,secretaryData.reservations),tarifa:appConfig.nightlyRate||'120 €/noche'};
@@ -3269,6 +3276,30 @@ server.on('upgrade', (req, socket) => {
                 body:new URLSearchParams({Twiml:'<Response><Say language="es-ES">Gracias por llamar. No nos interesa la oferta. Buen día.</Say><Hangup/></Response>'}),signal:AbortSignal.timeout(8000)
               });
               if(!r.ok) throw Error();
+            },
+            onFavorable:phoneCall.goal?null:async resumen=>{
+              const no='No confirmes nada; pide la oferta por escrito. El titular decidirá.';
+              if(activeCall!==call||call.status!=='screening'||call.requestingTransfer||call.autoTransferAttempted)return no;
+              call.autoTransferAttempted=true;
+              const target=normalizeSpanishE164(appConfig.personalPhoneNumber);
+              if(!/^\+[1-9]\d{6,14}$/.test(target)||target===normalizeSpanishE164(appConfig.twilioPhoneNumber)||target===normalizeSpanishE164(call.fromNumber)){
+                appendTranscriptChunk('system','Oferta favorable. No hay un destino válido para el desvío automático.');
+                return no;
+              }
+              call.requestingTransfer=true;
+              try{
+                appendTranscriptChunk('system',`Oferta favorable: ${resumen}. Solicitando desvío al titular para que decida.`);
+                const r=await redirectTwilioCallToMobile(call.callSid,target);
+                if(r.simulated)return no;
+                if(activeCall===call && call.status==='screening'){
+                  call.status='transferred';
+                  broadcastToDashboard({type:'call_transferred',mode:'mobile',message:'Desvío al titular solicitado; oferta no aceptada.',call:serializeCall(call)});
+                }
+                return 'Desvío solicitado. No aceptes la oferta.';
+              }catch{
+                if(activeCall===call)appendTranscriptChunk('system','No se ha podido confirmar el desvío automático.');
+                return no;
+              }finally{call.requestingTransfer=false;}
             },
             onCheck:result => {(call.checks ||= []).push(result);},
             onAudioChunk(base64Pcm24k) {
