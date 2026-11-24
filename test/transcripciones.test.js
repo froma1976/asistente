@@ -20,6 +20,19 @@ assert.match(httpSource, /\}\);\s*(?:\/\/[^\n]*\s*)*$/);
 assert.doesNotMatch(httpSource, /server\.listen\(/);
 const jsonSource = between(source, 'function readJsonBody(req)', "const ofertas=require('./ofertas');");
 
+test('la escucha entrega las dos voces de su llamada y corta al retomar o cambiar de llamada',()=>{
+  const frames=[],call={source:'twilio',status:'screening',twilioWs:{readyState:1},
+    oyentes:new Set([{write:frame=>frames.push(JSON.parse(frame.slice(6)))}])};
+  const ctx=vm.createContext({activeCall:call});
+  vm.runInContext(between(source,'function enDirecto()', 'let claraReplyPending'),ctx);
+  const pcm=Buffer.from([0,127]);
+  for(const role of ['caller','assistant','clear'])ctx.audioEscucha(call,role,role==='clear'?undefined:pcm);
+  assert.deepEqual(frames,[{role:'caller',data:'AH8='},{role:'assistant',data:'AH8='},{role:'clear'}]);
+  call.status='transferred';ctx.audioEscucha(call,'caller',pcm);
+  call.status='screening';ctx.activeCall={...call};ctx.audioEscucha(call,'assistant',pcm);
+  assert.equal(frames.length,3);
+});
+
 function harness({authorized = true, activeCall = null, rehearsal = [], failSave = false} = {}) {
   const selected = {id:'selected', transcript:[{role:'caller', text:'Synthetic selected'}]};
   const other = {id:'other', transcript:[{role:'caller', text:'Synthetic other'}]};

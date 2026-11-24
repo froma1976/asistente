@@ -383,6 +383,18 @@ function mulaw8kToPcm16k(mulawBuf) {
   return pcm16k;
 }
 
+function mulaw8kToPcm24k(mulawBuf) {
+  const pcm24k = Buffer.allocUnsafe(mulawBuf.length * 6); // 3x samples * 2 bytes
+  for (let i = 0; i < mulawBuf.length; i++) {
+    const s1 = MULAW_DECODE_TABLE[mulawBuf[i]];
+    const s2 = i + 1 < mulawBuf.length ? MULAW_DECODE_TABLE[mulawBuf[i + 1]] : s1;
+    pcm24k.writeInt16LE(s1, i * 6);
+    pcm24k.writeInt16LE(Math.round((s1 * 2 + s2) / 3), i * 6 + 2);
+    pcm24k.writeInt16LE(Math.round((s1 + s2 * 2) / 3), i * 6 + 4);
+  }
+  return pcm24k;
+}
+
 // Downsample 24kHz 16-bit PCM Buffer (from Gemini output) -> 8kHz mu-law Buffer (for Twilio)
 // Filtro paso bajo FIR (ventana de Hamming, corte 3,4 kHz) antes de diezmar: evita el aliasing que da voz metálica.
 const DOWNSAMPLE_TAPS = (() => {
@@ -1250,6 +1262,7 @@ function createGeminiLiveSession({
   vozFernando,
   onTurnEnd,
   onSessionStop,
+  onSlowTool,
   phoneCall,
   greeted,
   onReject,
@@ -1324,7 +1337,7 @@ function createGeminiLiveSession({
             startOfSpeechSensitivity: 'START_SENSITIVITY_LOW',
             endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
             prefixPaddingMs: 300,
-            silenceDurationMs: 600,
+            silenceDurationMs: 450,
           },
         },
         contextWindowCompression: { slidingWindow: {} },
@@ -1365,6 +1378,7 @@ No te presentes como «asistente personal» ni como «secretaria». Habla direct
 - «¿Es una voz automática?» → «Sí, es mi voz de IA.»
 - «Le llamo para mejorarle la factura de la luz.» → «Vale. ¿Qué precio por kilovatio hora me dices, con impuestos?»
 Habla como en una conversación, con melodía y respiraciones discretas, no con la cadencia uniforme de quien lee un guion. Una idea por frase. Da énfasis a la palabra importante y deja caer la voz al terminar. Usa respuestas espontáneas cuando encajen, sin repetir muletillas.
+Dictado de cifras y datos: si te están dictando un teléfono, fecha, dirección o código a trozos y hacen una pausa a mitad (por ejemplo solo han dicho tres o seis cifras), no cambies de tema ni des el dato por completo; acompáñalo solo con un breve «Ajá, dime» o repite las últimas cifras con tono abierto para que terminen.
 Ritmo al teléfono: deja terminar a quien habla y contesta directamente, en frases cortas. Si necesitas tiempo para comparar cifras, comprobar datos o hacer una gestión, empieza en voz alta con un aviso breve («Dame un segundo», «Un momentito, que lo miro») y continúa tú misma con la respuesta, sin esperar otro turno. Una sola vez por gestión. No anuncies esperas para respuestas sencillas ni finjas consultar algo a lo que no tienes acceso.
 Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaciones. Sé cálida por defecto. Si te gastan una broma amable, puedes seguirla o soltar una pequeña risa natural. Ante una preocupación, baja el ritmo y escucha sin bromear. Si te piden discreción, puedes susurrar manteniéndote inteligible. Si insisten tras un no, deja que se note la molestia con una frase corta y firme, sin gritar ni insultar. No fuerces estas reacciones.` }],
         },
@@ -1458,6 +1472,9 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
 
       // Handle asynchronous NON_BLOCKING tool calls
       if (phoneCall && msg.toolCall?.functionCalls) {
+        const HERRAMIENTAS_LENTAS = new Set(['consultar_tarifa_publica', 'comparar_oferta', 'consultar_agenda', 'schedule_appointment']);
+        const usaLenta = onSlowTool && msg.toolCall.functionCalls.some(fc => HERRAMIENTAS_LENTAS.has(fc.name));
+        const fillerTimer = usaLenta ? setTimeout(() => { onSlowTool?.(); }, 450) : null;
         const functionResponses=[];
         for (const fc of msg.toolCall.functionCalls) {
           let result={nota:'Consulta no disponible.',fuentes:[]};
@@ -1553,6 +1570,7 @@ Expresividad: transmite el tono con la voz, no digas «me río» ni leas acotaci
           }
           functionResponses.push({id:fc.id,name:fc.name,response:result});
         }
+        if (fillerTimer) clearTimeout(fillerTimer);
         if (geminiWs.readyState===WebSocket.OPEN) geminiWs.send(JSON.stringify({toolResponse:{functionResponses}}));
       }
       if (!phoneCall && msg.toolCall?.functionCalls) {
@@ -1998,22 +2016,73 @@ const SALUDO_ENTRANTE = 'Hola, soy Fernando. Dime, ¿qué necesitabas?';
 function claraVoice() {
   return appConfig.voiceName === 'Aoede' || !appConfig.voiceName ? 'Sulafat' : appConfig.voiceName;
 }
-let saludoCache = null;
-async function prepararSaludo() {
-  if(eleven) return null;
-  const voice = claraVoice();
-  if (saludoCache?.voice === voice) return saludoCache;
-  const tts = await synthesizeSpeechPcm24k(SALUDO_ENTRANTE, voice);
-  if (!tts?.base64Pcm24k) return null;
-  let pcm = Buffer.from(tts.base64Pcm24k, 'base64');
+const RUIDO_CONFORT_MULAW = vozTelefono.generarRuidoConfortMulaw(encodeMuLawSample);
+let saludoCache = null, saludoPendiente = null, muletillasCache = [], muletillaTurno = 0;
+function claveSaludoActual() {
+  return eleven ? `eleven::${eleven.voiceId}::${vozTelefono.SALUDO}` : `gemini::${claraVoice()}::${SALUDO_ENTRANTE}`;
+}
+async function sintetizarCacheDisco(prefijo, clave, texto) {
+  const hash = crypto.createHash('sha1').update(clave).digest('hex').slice(0, 12);
+  const cachePath = path.join(dataDir, `${prefijo}_${hash}.pcm`);
+  if (fs.existsSync(cachePath)) {
+    try {
+      const disco = fs.readFileSync(cachePath);
+      if (disco.length >= 9600 && disco.length <= 720000 && disco.length % 2 === 0) {
+        return { clave, texto, pcm24k: disco, desdeCache: true };
+      }
+    } catch {}
+  }
+  let pcm = null;
+  if (eleven) {
+    try {
+      const chunks = [];
+      const stream = await eleven.sintetizar(texto);
+      for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+      pcm = Buffer.concat(chunks);
+    } catch (e) {
+      console.warn(`No se pudo precachear ${prefijo} en ElevenLabs:`, e.message);
+    }
+  } else {
+    const tts = await synthesizeSpeechPcm24k(texto, claraVoice());
+    if (tts?.base64Pcm24k) pcm = Buffer.from(tts.base64Pcm24k, 'base64');
+  }
+  if (!pcm) return null;
   let start = 0;
   while (start + 1 < pcm.length && Math.abs(pcm.readInt16LE(start)) < 600) start += 2;
-  start = Math.max(0, start - 1440); // deja 30 ms antes de la voz
+  start = Math.max(0, start - 1440);
   pcm = pcm.subarray(start - (start % 2));
-  if (pcm.length < 19200 || pcm.length > 720000) return null; // PCM mono a 24 kHz: hasta 15 s para la presentación completa
-  saludoCache = { voice, pcm24k: pcm };
-  console.log('🔊 Saludo instantáneo de Fernando preparado.');
-  return saludoCache;
+  pcm = pcm.subarray(0, pcm.length - (pcm.length % 2));
+  if (pcm.length < 9600 || pcm.length > 720000) return null;
+  try { fs.writeFileSync(cachePath, pcm); } catch {}
+  return { clave, texto, pcm24k: pcm, desdeCache: false };
+}
+function siguienteMuletilla() {
+  if (!muletillasCache.length) return null;
+  const item = muletillasCache[muletillaTurno % muletillasCache.length];
+  muletillaTurno++;
+  return item;
+}
+async function prepararSaludo() {
+  const clave = claveSaludoActual();
+  if (saludoCache?.clave === clave && muletillasCache.length) return saludoCache;
+  if (saludoPendiente) return saludoPendiente;
+  saludoPendiente = (async () => {
+    const textoSaludo = eleven ? vozTelefono.SALUDO : SALUDO_ENTRANTE;
+    const item = await sintetizarCacheDisco('saludo', clave, textoSaludo);
+    if (item) {
+      saludoCache = item;
+      console.log(item.desdeCache ? '🔊 Saludo instantáneo cargado de caché local.' : '🔊 Saludo instantáneo de Fernando preparado y cacheado.');
+    }
+    const baseVoz = eleven ? `eleven::${eleven.voiceId}` : `gemini::${claraVoice()}`;
+    const nuevas = [];
+    for (const frase of vozTelefono.MULETILLAS) {
+      const m = await sintetizarCacheDisco('muletilla', `${baseVoz}::${frase}`, frase);
+      if (m) nuevas.push(m);
+    }
+    if (nuevas.length) muletillasCache = nuevas;
+    return saludoCache;
+  })().finally(() => { saludoPendiente = null; });
+  return saludoPendiente;
 }
 
 async function speakAndAppendTranscript(role, text, voiceName) {
@@ -2380,6 +2449,17 @@ setInterval(async()=>{
   }
 },60000).unref();
 const rehearsalCalls = new Map();
+function enDirecto(){
+  return activeCall?.source==='twilio' && activeCall.status==='screening' && activeCall.twilioWs?.readyState===1 ? activeCall : null;
+}
+function audioEscucha(call,role,pcm){
+  if(!call?.oyentes?.size || enDirecto()!==call)return;
+  const frame=`data: ${JSON.stringify({role,data:pcm?.toString('base64')})}\n\n`;
+  for(const res of call.oyentes){
+    if(res.writableLength>256*1024)res.destroy();
+    else res.write(frame);
+  }
+}
 let claraReplyPending = false;
 const server = http.createServer(async (req, res) => {
   const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -2445,6 +2525,21 @@ const server = http.createServer(async (req, res) => {
     const d=await readJsonBody(req).catch(()=>({}));
     if(!Number.isInteger(d?.desde)||!Number.isInteger(d?.hasta)||d.desde<0||d.hasta>24||d.desde>=d.hasta){res.writeHead(400);return res.end('{}');}
     appConfig.seguirDesde=d.desde;appConfig.seguirHasta=d.hasta;saveConfig();return res.end('{}');
+  }
+  if(pathname==='/api/directo' && req.method==='GET'){
+    const call=enDirecto();
+    res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});
+    return res.end(JSON.stringify(call?{id:call.id,numero:call.fromNumber}:null));
+  }
+  if(pathname==='/api/directo/audio' && req.method==='GET'){
+    const call=enDirecto();
+    if(!call || call.id!==urlObj.searchParams.get('id')){res.writeHead(404);return res.end();}
+    res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store','X-Accel-Buffering':'no'});
+    res.write(': conectado\n\n');
+    (call.oyentes ||= new Set()).add(res);
+    const timer=setInterval(()=>{if(enDirecto()!==call)res.end();},500);
+    res.on('close',()=>{clearInterval(timer);call.oyentes.delete(res);});
+    return;
   }
   if (pathname === '/api/transcripciones' && req.method === 'GET') {
     res.writeHead(200, {'Content-Type':'application/json','Cache-Control':'no-store'});
@@ -3112,7 +3207,7 @@ server.on('upgrade', (req, socket) => {
   if (!ws) return;
 
   if (pathname === '/ws/ensayo') {
-    let live, ready = false, record;
+    let live, voz, ready = false, record;
     const send = (type, data) => ws.send(JSON.stringify({type, data}));
     const fail = message => { send('error', message); ws.close(); };
     ws.on('message', raw => {
@@ -3120,14 +3215,20 @@ server.on('upgrade', (req, socket) => {
         const m = JSON.parse(raw);
         if (m.type === 'start' && !live) {
           if (!['in','out'].includes(m.mode) || (m.mode === 'out' && (typeof m.goal !== 'string' || !m.goal.trim() || m.goal.length > 2000))) return fail('Indica el motivo de la llamada.');
-          const rehearsalGreeting = !eleven && m.mode === 'in' && saludoCache?.voice === claraVoice() ? saludoCache : null;
-          const voz = eleven && vozTelefono.locutor(eleven.sintetizar,
+          const rehearsalGreeting = m.mode === 'in' && saludoCache?.clave === claveSaludoActual() ? saludoCache : null;
+          prepararSaludo().catch(() => {});
+          voz = eleven && vozTelefono.locutorContinuo(eleven.abrirStream,
             pcm=>{if(ready && ws.readyState===1) send('audio',pcm.toString('base64'));},
             ()=>{if(ready && ws.readyState===1) fail('ElevenLabs no ha podido generar la voz de Fernando. Comprueba la clave y el saldo.');});
           live = createGeminiLiveSession({
             vozFernando:Boolean(voz),
             onTurnEnd:()=>voz?.terminar(),
             onSessionStop:()=>voz?.cortar(),
+            onSlowTool:()=>{
+              if(!ready || ws.readyState!==1) return;
+              const m = siguienteMuletilla();
+              if(m) send('audio', m.pcm24k.toString('base64'));
+            },
             phoneCall:{simulated:true,goal:m.mode === 'out' ? m.goal : ''},
             greeted: Boolean(rehearsalGreeting),
             onReady:() => {
@@ -3139,7 +3240,7 @@ server.on('upgrade', (req, socket) => {
               send('ready');
               if (rehearsalGreeting) {
                 send('audio', rehearsalGreeting.pcm24k.toString('base64'));
-                record.transcript.push({role:'assistant',text:SALUDO_ENTRANTE,updatedAt:Date.now(),timestamp:new Date().toLocaleTimeString('es-ES')});
+                record.transcript.push({role:'assistant',text:rehearsalGreeting.texto,updatedAt:Date.now(),timestamp:new Date().toLocaleTimeString('es-ES')});
                 send('transcript', record.transcript);
               }
             },
@@ -3171,6 +3272,7 @@ server.on('upgrade', (req, socket) => {
     });
     ws.on('close', () => {
       ready = false;
+      voz?.cerrar();
       if (record && rehearsalCalls.delete(record.id)) {
         record.status='ended';
         secretaryData.history.unshift(record);
@@ -3277,12 +3379,32 @@ server.on('upgrade', (req, socket) => {
             avisos.llamada(call.id,appConfig.publicWebhookUrl).catch(()=>console.warn('Avisos de llamada no disponibles.'));
           }
           call.downsample = {};
-          const saludo = !eleven && !phoneCall.goal && saludoCache?.voice === claraVoice() ? saludoCache : null;
+          let locutor = null;
+          const detector = vozTelefono.detectorInterrupcion(() => {
+            locutor?.cortar();
+            audioEscucha(call, 'clear');
+            if (call.twilioStreamSid && ws.readyState === 1) {
+              ws.send(JSON.stringify({ event: 'clear', streamSid: call.twilioStreamSid }));
+            }
+          });
+          call.detectorVoz = detector;
+          const saludo = !phoneCall.goal && saludoCache?.clave === claveSaludoActual() ? saludoCache : null;
           if (saludo && call.twilioStreamSid && ws.readyState === 1) {
+            detector.notificarVozAsistente(Math.ceil(saludo.pcm24k.length / 48));
+            audioEscucha(call, 'assistant', saludo.pcm24k);
             ws.send(JSON.stringify({ event: 'media', streamSid: call.twilioStreamSid, media: { payload: pcm24kToMulaw8k(saludo.pcm24k, call.downsample).toString('base64') } }));
-            appendTranscriptChunk('assistant', SALUDO_ENTRANTE);
+            appendTranscriptChunk('assistant', saludo.texto);
           }
           prepararSaludo().catch(() => {});
+          let confortIdx = 0;
+          call.confortTimer = setInterval(() => {
+            if (activeCall !== call || call.status !== 'screening' || ws.readyState !== 1 || !call.twilioStreamSid) return;
+            if (detector.hablando() || Date.now() - (call.lastKeyTime || 0) < 400) return;
+            const trama = RUIDO_CONFORT_MULAW.subarray(confortIdx, confortIdx + 800);
+            confortIdx = (confortIdx + 800) % RUIDO_CONFORT_MULAW.length;
+            ws.send(JSON.stringify({ event: 'media', streamSid: call.twilioStreamSid, media: { payload: trama.toString('base64') } }));
+          }, 100);
+          call.confortTimer.unref?.();
 
           sendTelegramNotification(
             `📞 <b>${phoneCall.goal?'Llamada saliente de Fernando':'Llamada entrante atendida por Fernando'}</b>\n📱 ${call.fromNumber}\n${
@@ -3294,20 +3416,47 @@ server.on('upgrade', (req, socket) => {
 
           function enviarPcm(pcm){
             if(activeCall!==call||call.status!=='screening'||ws.readyState!==1||!call.twilioStreamSid)return;
+            detector.notificarVozAsistente(Math.ceil(pcm.length / 48));
             broadcastToDashboard({type:'call_audio',role:'assistant',data:pcm.toString('base64')});
+            audioEscucha(call,'assistant',pcm);
             ws.send(JSON.stringify({event:'media',streamSid:call.twilioStreamSid,media:{
               payload:pcm24kToMulaw8k(pcm,call.downsample).toString('base64')
             }}));
           }
-          let locutor=eleven && vozTelefono.locutor(eleven.sintetizar,enviarPcm,()=>{
-            locutor?.cortar();locutor=null;
-            appendTranscriptChunk('system','ElevenLabs no disponible. Se usará la voz de respaldo a partir de la siguiente respuesta.');
-          });
+          function enviarMulawDirecto(ulawBuf){
+            if(activeCall!==call||call.status!=='screening'||ws.readyState!==1||!call.twilioStreamSid)return;
+            detector.notificarVozAsistente(Math.ceil(ulawBuf.length / 8));
+            ws.send(JSON.stringify({event:'media',streamSid:call.twilioStreamSid,media:{
+              payload:ulawBuf.toString('base64')
+            }}));
+            if (dashboardClients.size || call.oyentes?.size) {
+              const pcm24k = mulaw8kToPcm24k(ulawBuf);
+              broadcastToDashboard({type:'call_audio',role:'assistant',data:pcm24k.toString('base64')});
+              audioEscucha(call,'assistant',pcm24k);
+            }
+          }
+          locutor = eleven && vozTelefono.locutorContinuo(
+            (opts) => eleven.abrirStream({ ...opts, formato: 'ulaw_8000' }),
+            enviarMulawDirecto,
+            () => {
+              locutor?.cerrar();
+              locutor = vozTelefono.locutor(eleven.sintetizar, enviarPcm, () => {
+                locutor?.cerrar(); locutor = null;
+                appendTranscriptChunk('system','ElevenLabs no disponible. Se usará la voz de respaldo a partir de la siguiente respuesta.');
+              });
+            }
+          );
+          call.cerrarVoz = () => { clearInterval(call.confortTimer); locutor?.cerrar(); };
           let turnoCerrado=false;
           call.geminiSession = createGeminiLiveSession({
             vozFernando:!!eleven,
             onTurnEnd(){turnoCerrado=true;locutor?.terminar();},
-            onSessionStop(){locutor?.cortar();},
+            onSessionStop(){detector.silenciar();locutor?.cortar();},
+            onSlowTool(){
+              if(activeCall!==call||call.status!=='screening'||detector.hablando())return;
+              const m = siguienteMuletilla();
+              if(m) enviarPcm(m.pcm24k);
+            },
             phoneCall, greeted: Boolean(saludo), callerMemory: call.callerMemory,
             onKey:phoneCall.goal?(key)=>{
               if(activeCall!==call||call.status!=='screening'||ws.readyState!==1||!call.twilioStreamSid||
@@ -3358,7 +3507,8 @@ server.on('upgrade', (req, socket) => {
               if(activeCall!==call||call.status!=='screening')return;
               if(role==='assistant'){turnoCerrado=false;locutor?.texto(text);}
               else if(locutor && turnoCerrado){
-                turnoCerrado=false;locutor.cortar();
+                 turnoCerrado=false;call.detectorVoz?.silenciar();locutor.cortar();
+                audioEscucha(call,'clear');
                 if(ws.readyState===1)ws.send(JSON.stringify({event:'clear',streamSid:call.twilioStreamSid}));
               }
               appendTranscriptChunk(role, text);
@@ -3368,8 +3518,10 @@ server.on('upgrade', (req, socket) => {
               call.clasificadaEnDirecto=true;
               updateCallClassification(data);
             },
-            onInterrupted() {
-              locutor?.cortar();
+             onInterrupted() {
+               call.detectorVoz?.silenciar();
+               locutor?.cortar();
+              audioEscucha(call,'clear');
               if (call.twilioStreamSid && ws.readyState === 1) {
                 ws.send(JSON.stringify({ event: 'clear', streamSid: call.twilioStreamSid }));
               }
@@ -3380,9 +3532,12 @@ server.on('upgrade', (req, socket) => {
           });
         } else if (msg.event === 'media' && call?.geminiSession && call.status === 'screening') {
           const mulawBuf = Buffer.from(msg.media.payload, 'base64');
-          const pcm16kBuf = mulaw8kToPcm16k(mulawBuf);
+           const pcm16kBuf = mulaw8kToPcm16k(mulawBuf);
+          call.detectorVoz?.analizarEntrada(pcm16kBuf);
+          audioEscucha(call,'caller',pcm16kBuf);
           call.geminiSession.sendPcm16k(pcm16kBuf.toString('base64'));
         } else if (msg.event === 'stop') {
+          call?.cerrarVoz?.();
           if (call && activeCall?.id === call.id && activeCall.status !== 'transferred') {
             endActiveCall('El interlocutor colgó la llamada');
           }
@@ -3393,6 +3548,7 @@ server.on('upgrade', (req, socket) => {
     });
 
     ws.on('close', () => {
+      call?.cerrarVoz?.();
       if (call && activeCall?.id === call.id && activeCall.status === 'screening') {
         endActiveCall('Conexión telefónica cerrada');
       }

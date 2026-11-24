@@ -39,6 +39,7 @@ function card(call, opened, saved=false) {
   const box=document.createElement('details'), title=document.createElement('summary');
   box.dataset.id=call.id; box.open=opened;
   title.textContent=[call.fromNumber || 'Llamada',new Date(call.startedAt).toLocaleString('es-ES')].join(' · ');
+  if(saved)title.textContent=(call.resultado || call.offerReview?.resumen || 'Sin resultado disponible')+' · '+title.textContent;
   box.append(title);
   if(call.offerReview) {
     const r=call.offerReview, h=document.createElement('h3'), p=document.createElement('p');
@@ -95,6 +96,7 @@ async function refresh() {
       live.closest('section').querySelector('h2').hidden=!data.live.length;
     }
     const next=data.live.find(c=>c.source==='twilio' && c.status==='screening')?.id||'';
+    document.dispatchEvent(new CustomEvent('llamada-directo',{detail:next?{id:next}:null}));
     const counts=data.balance;
     if(data.horario&&!horario.dataset.loaded){[horario.elements.desde.value,horario.elements.hasta.value]=data.horario;horario.dataset.loaded='1';}
     if(counts)document.getElementById('balance').textContent=`Hoy: ${counts.resueltos} resueltos · ${counts.pendientes} pendientes · ${counts.revisar} necesitan tu decisión.`;
@@ -115,7 +117,7 @@ async function refresh() {
       prevHistory=b;
     }
     notice.textContent=llamada&&!data.live.length&&!data.history.length?'Esta llamada no está disponible en el historial.':'';
-  } catch {available='';take.hidden=true;notice.textContent='Sin conexión con Fernando. Reintentando…';}
+  } catch {document.dispatchEvent(new CustomEvent('llamada-directo'));available='';take.hidden=true;notice.textContent='Sin conexión con Fernando. Reintentando…';}
   finally {setTimeout(refresh,1500);}
 }
 refresh();

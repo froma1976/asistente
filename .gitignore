@@ -7,3 +7,6 @@ avisos-privados.json*
 .env
 .env.local
 sesiones.json*
+
+saludo_*.pcm
+muletilla_*.pcm

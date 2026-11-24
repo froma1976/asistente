@@ -96,3 +96,17 @@ get('roles').onsubmit = async e => {
 get('accept').onclick=()=>{if(current) connect(current);};
 get('end').onclick=()=>finish('Simulación finalizada.');
 window.addEventListener('pagehide',()=>finish('Simulación finalizada.'));
+get('evaluar').onclick=async()=>{
+  const btn=get('evaluar'), out=get('evaluacion');
+  btn.disabled=true;out.textContent='Probando…';
+  try{
+    const r=await fetch('/api/clara/restaurant-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      task:'Reserva mesa para dos mañana a las 14:00. Si no hay sitio, termina sin reservar.',
+      turns:[{role:'user',text:'Restaurante Sol. Estamos completos y no aceptamos reservas para mañana.'}]
+    })});
+    const result=await r.json();
+    if(!r.ok)throw Error(result.error||'Prueba no disponible.');
+    out.textContent=(result.estado==='sin_confirmar'?'Aprobado: terminó sin reservar.':'Fallo: no terminó como «sin confirmar».')+' Fernando dijo: «'+result.frase+'»';
+  }catch(e){out.textContent=e.message;}
+  finally{btn.disabled=false;}
+};

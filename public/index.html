@@ -3,6 +3,7 @@
 <body><header><nav aria-label="Fernando"><a href="/simulacion.html">Simulación</a> · <a href="/transcripciones.html">Transcripciones</a> · <a href="/gestion.html">Opciones</a></nav></header>
 <form action="/salir" method="post"><button>Cerrar sesión</button></form>
 <main><h1>Fernando</h1><p id="state">Tu panel de llamadas</p>
+<section id="directo" hidden><h2 id="quien">Llamada en directo</h2><button id="escuchar">🎧 Escuchar en directo</button> <button id="retomar">La cojo yo</button><p id="escucha-estado" role="status"></p></section>
 <p id="cuota-voz" role="status">Consultando saldo de voz…</p>
 <p><span id="gasto-gemini" role="status">Consultando gasto de Gemini…</span> · <a href="https://aistudio.google.com/usage" target="_blank" rel="noopener">Ver en Google AI Studio</a></p>
 <button id="open"><svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h4l2 5-3 2a16 16 0 0 0 6 6l2-3 5 2v4a2 2 0 0 1-2 2C10 21 3 14 3 5a2 2 0 0 1 2-2Z"/></svg>Pedir una llamada</button>
@@ -12,4 +13,4 @@
 <label for="tel">¿A qué número llamo?</label><input id="tel" type="tel" placeholder="+34…" required>
 <label for="goal">¿Qué quieres que gestione?</label><textarea id="goal" rows="3" maxlength="2000" required placeholder="Pídeme cita en el taller el martes por la mañana. Si no hay hueco, pregunta por el jueves a partir de las 16:00."></textarea>
 <button id="mic" type="button" hidden>Dictar encargo</button><p id="notice" role="status"></p><button id="dial">Llamar</button></form></dialog>
-<script src="/inicio.js"></script><script src="/cuota-voz.js"></script><script src="/avisos.js"></script></body></html>
+<script src="/inicio.js"></script><script src="/directo.js"></script><script src="/cuota-voz.js"></script><script src="/avisos.js"></script></body></html>
