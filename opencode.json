@@ -1,0 +1,10 @@
+{
+  "mcp": {
+    "servers": {
+      "elevenlabs": {
+        "type": "remote",
+        "url": "https://api.elevenlabs.io/v1/mcp"
+      }
+    }
+  }
+}
